@@ -4,9 +4,9 @@
   ████      ▀▀█▄  █  █ █   █▀▄  █
 ██████      ▄▄▄▀  █  █ ▀▀▀ █ █  █
 ████████
-████████    █▀▄  █ █ █▀▄
- ██████     ██▀  █ █ █ █
-   ████     █▄▀  ▀▄▀ █ █
+████████    █▀▄  █ █ █▀▄   ▀▀█ █ ▄▀▀
+ ██████     ██▀  █ █ █ █   ▄ ▀ █ █ ▄
+   ████     █▄▀  ▀▄▀ █ █   █▄▄ █ ▀▀█
      ▀▀
   </pre>
 </p>
@@ -31,12 +31,12 @@
 ## Install
 
 ```bash
-git clone https://github.com/wolfejam/bun-sticky-zig
+git clone https://github.com/Wolfe-Jam/bun-sticky-zig
 cd bun-sticky-zig
 zig build -Doptimize=ReleaseFast
 ```
 
-**68KB binary. Zero runtime dependencies.**
+**77KB binary. Zero runtime dependencies.**
 
 ## Usage
 
@@ -53,7 +53,7 @@ zig build -Doptimize=ReleaseFast
 
 | Feature | bun-sticky |
 |---------|-----------|
-| Binary size | 68KB |
+| Binary size | 77KB |
 | Dependencies | 0 |
 | Cold start | <1ms |
 | Cross-platform | ✓ |
@@ -94,7 +94,7 @@ Score = Filled Slots / Applicable Slots × 100
 ## Testing
 
 ```bash
-zig build test    # 136 tests
+zig build test    # 102 tests
 ```
 
 ## FAF Ecosystem
@@ -102,7 +102,7 @@ zig build test    # 136 tests
 | Package | Runtime | Install |
 |---------|---------|---------|
 | [faf-cli](https://npmjs.com/package/faf-cli) | Node.js | `npm i -g faf-cli` |
-| [bun-sticky](https://npmjs.com/package/bun-sticky) | Bun | `bun add -g bun-sticky` |
+| [bun-sticky-faf](https://npmjs.com/package/bun-sticky-faf) | Bun | `bunx bun-sticky-faf` |
 | **bun-sticky-zig** | Native | Clone + build |
 
 ## License
