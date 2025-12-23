@@ -94,7 +94,7 @@ pub fn main() !void {
         try cmdScore();
     } else if (std.mem.eql(u8, cmd, "init")) {
         const name = init_name orelse {
-            print("{s}Usage: bun-sticky init <name>{s}\n", .{ RED(), RESET() });
+            print("{s}Usage: faf init <name>{s}\n", .{ RED(), RESET() });
             return;
         };
         try cmdInit(name);
@@ -113,7 +113,7 @@ fn cmdScore() !void {
     // Read project.faf
     const file = fs.cwd().openFile("project.faf", .{}) catch {
         print("{s}No project.faf found{s}\n", .{ RED(), RESET() });
-        print("{s}Run: bun-sticky init <name>{s}\n", .{ DIM(), RESET() });
+        print("{s}Run: faf init <name>{s}\n", .{ DIM(), RESET() });
         return;
     };
     defer file.close();
@@ -370,7 +370,7 @@ fn cmdInit(name: []const u8) !void {
 
     puts(BANNER);
     print("  {s}Created{s} project.faf\n", .{ GREEN(), RESET() });
-    print("  {s}Run: bun-sticky score{s}\n\n", .{ DIM(), RESET() });
+    print("  {s}Run: faf score{s}\n\n", .{ DIM(), RESET() });
 }
 
 fn cmdSync() !void {
