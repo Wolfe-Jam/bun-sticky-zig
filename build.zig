@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
 
     // Main executable - Zig 0.15+ API
     const exe = b.addExecutable(.{
-        .name = "bun-sticky",
+        .name = "faf",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -24,7 +24,7 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
-    const run_step = b.step("run", "Run bun-sticky CLI");
+    const run_step = b.step("run", "Run faf CLI");
     run_step.dependOn(&run_cmd.step);
 
     // Tests - main.zig tests

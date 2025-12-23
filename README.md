@@ -41,10 +41,10 @@ zig build -Doptimize=ReleaseFast
 ## Usage
 
 ```bash
-./zig-out/bin/bun-sticky score      # Score current project
-./zig-out/bin/bun-sticky init myapp # Create project.faf
-./zig-out/bin/bun-sticky sync       # Sync to CLAUDE.md
-./zig-out/bin/bun-sticky help       # Show commands
+./zig-out/bin/faf score      # Score current project
+./zig-out/bin/faf init myapp # Create project.faf
+./zig-out/bin/faf sync       # Sync to CLAUDE.md
+./zig-out/bin/faf help       # Show commands
 ```
 
 ## Why Zig?

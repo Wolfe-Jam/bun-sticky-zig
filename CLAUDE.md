@@ -7,8 +7,8 @@ Fastest bun under the sum. Zig-native FAF CLI.
 ```bash
 zig build test                           # Run 102 tests
 zig build -Doptimize=ReleaseFast         # Build (77KB binary)
-./zig-out/bin/bun-sticky score           # Score current project
-./zig-out/bin/bun-sticky help            # Show commands
+./zig-out/bin/faf score           # Score current project
+./zig-out/bin/faf help            # Show commands
 ```
 
 ## Architecture
