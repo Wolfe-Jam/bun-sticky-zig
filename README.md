@@ -47,10 +47,17 @@ cd bun-sticky-zig
 ## Usage
 
 ```bash
-faf score      # Score current project
-faf init myapp # Create project.faf
-faf sync       # Sync to CLAUDE.md
-faf help       # Show commands
+cd any-project        # Go to any repo/directory
+faf score             # Score the project.faf
+```
+
+Or create one:
+
+```bash
+faf init myapp        # Create project.faf
+faf score             # Score it
+faf sync              # Sync to CLAUDE.md
+faf help              # Show commands
 ```
 
 ## Why Zig?
