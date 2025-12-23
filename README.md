@@ -94,7 +94,7 @@ Score = Filled Slots / Applicable Slots × 100
 ## Testing
 
 ```bash
-zig build test    # 136 tests
+zig build test --summary all    # 136/136 tests passed
 ```
 
 ## FAF Ecosystem

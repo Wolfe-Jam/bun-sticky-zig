@@ -7,7 +7,7 @@ Thanks for your interest in contributing!
 ```bash
 git clone https://github.com/Wolfe-Jam/bun-sticky-zig
 cd bun-sticky-zig
-zig build test
+zig build test --summary all
 ```
 
 ## Development
@@ -15,7 +15,7 @@ zig build test
 ```bash
 zig build                           # Debug build
 zig build -Doptimize=ReleaseFast    # Release build
-zig build test                      # Run all tests
+zig build test --summary all        # 136/136 tests
 ./zig-out/bin/faf score      # Test locally
 ```
 
@@ -31,7 +31,7 @@ zig build test                      # Run all tests
 1. Fork the repo
 2. Create a branch (`git checkout -b feature/thing`)
 3. Make changes + add tests
-4. Run `zig build test`
+4. Run `zig build test --summary all`
 5. Submit PR
 
 ## Code Style
