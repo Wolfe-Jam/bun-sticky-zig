@@ -33,7 +33,7 @@
 ```bash
 git clone https://github.com/Wolfe-Jam/bun-sticky-zig
 cd bun-sticky-zig
-zig build -Doptimize=ReleaseFast
+./verify
 ```
 
 **77KB binary. Zero runtime dependencies.**

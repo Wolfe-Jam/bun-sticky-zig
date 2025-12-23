@@ -1,0 +1,14 @@
+#!/bin/bash
+# verify - Quick verification for bun-sticky-zig
+# Usage: ./verify
+
+set -e
+
+echo "Building + testing bun-sticky..."
+echo ""
+
+zig build test --summary all
+zig build -Doptimize=ReleaseFast
+
+echo ""
+./zig-out/bin/faf score
