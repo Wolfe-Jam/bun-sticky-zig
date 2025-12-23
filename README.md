@@ -117,6 +117,7 @@ zig build test --summary all    # 136/136 tests passed
 | [faf-cli](https://npmjs.com/package/faf-cli) | Node.js | `npm i -g faf-cli` |
 | [bun-sticky-faf](https://npmjs.com/package/bun-sticky-faf) | Bun | `bunx bun-sticky-faf` |
 | **bun-sticky-zig** | Native | `curl -fsSL .../install.sh \| bash` |
+| bun-sticky-zig-plus | Native | Color ASCII, bi-sync, --json (paid) |
 
 ## License
 
