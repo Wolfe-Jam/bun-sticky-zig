@@ -5,7 +5,7 @@ Thanks for your interest in contributing!
 ## Quick Start
 
 ```bash
-git clone https://github.com/wolfejam/bun-sticky-zig
+git clone https://github.com/Wolfe-Jam/bun-sticky-zig
 cd bun-sticky-zig
 zig build test
 ```
@@ -16,7 +16,7 @@ zig build test
 zig build                           # Debug build
 zig build -Doptimize=ReleaseFast    # Release build
 zig build test                      # Run all tests
-./zig-out/bin/bun-sticky score      # Test locally
+./zig-out/bin/faf score      # Test locally
 ```
 
 ## Guidelines

@@ -28,11 +28,11 @@ jobs:
         run: zig build -Doptimize=ReleaseFast
 
       - name: Verify binary
-        run: ./zig-out/bin/bun-sticky version
+        run: ./zig-out/bin/faf version
         if: runner.os != 'Windows'
 
       - name: Verify binary (Windows)
-        run: .\zig-out\bin\bun-sticky.exe version
+        run: .\zig-out\bin\faf.exe version
         if: runner.os == 'Windows'
 
   build-artifacts:
@@ -63,5 +63,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bun-sticky-${{ matrix.target }}
-          path: zig-out/bin/bun-sticky*
+          name: faf-${{ matrix.target }}
+          path: zig-out/bin/faf*

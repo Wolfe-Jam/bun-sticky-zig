@@ -24,7 +24,7 @@ human_context:
   why: Zig is what Bun is built on - speaks Bun's native language
   where: Terminal, CI/CD pipelines
   when: When milliseconds matter
-  how: zig build -Doptimize=ReleaseFast && ./zig-out/bin/bun-sticky score
+  how: zig build -Doptimize=ReleaseFast && ./zig-out/bin/faf score
 
 testing:
   framework: Zig builtin test
