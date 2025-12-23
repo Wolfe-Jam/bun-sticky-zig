@@ -5,7 +5,7 @@ Fastest bun under the sum. Zig-native FAF CLI.
 ## Quick Commands
 
 ```bash
-zig build test                           # Run 102 tests
+zig build test                           # Run 136 tests
 zig build -Doptimize=ReleaseFast         # Build (77KB binary)
 ./zig-out/bin/faf score           # Score current project
 ./zig-out/bin/faf help            # Show commands
