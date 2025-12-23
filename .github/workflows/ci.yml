@@ -17,9 +17,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v1
         with:
-          version: 0.13.0
+          version: 0.14.0
 
       - name: Run tests
         run: zig build test
@@ -34,34 +34,3 @@ jobs:
       - name: Verify binary (Windows)
         run: .\zig-out\bin\faf.exe version
         if: runner.os == 'Windows'
-
-  build-artifacts:
-    needs: test
-    runs-on: ${{ matrix.os }}
-    if: github.ref == 'refs/heads/main'
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-linux
-          - os: macos-latest
-            target: x86_64-macos
-          - os: macos-latest
-            target: aarch64-macos
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.13.0
-
-      - name: Build
-        run: zig build -Doptimize=ReleaseFast
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: faf-${{ matrix.target }}
-          path: zig-out/bin/faf*
