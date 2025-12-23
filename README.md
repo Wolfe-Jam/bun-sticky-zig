@@ -31,6 +31,12 @@
 ## Install
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Wolfe-Jam/bun-sticky-zig/main/install.sh | bash
+```
+
+Or build from source:
+
+```bash
 git clone https://github.com/Wolfe-Jam/bun-sticky-zig
 cd bun-sticky-zig
 ./verify
@@ -41,10 +47,10 @@ cd bun-sticky-zig
 ## Usage
 
 ```bash
-./zig-out/bin/faf score      # Score current project
-./zig-out/bin/faf init myapp # Create project.faf
-./zig-out/bin/faf sync       # Sync to CLAUDE.md
-./zig-out/bin/faf help       # Show commands
+faf score      # Score current project
+faf init myapp # Create project.faf
+faf sync       # Sync to CLAUDE.md
+faf help       # Show commands
 ```
 
 ## Why Zig?
@@ -103,7 +109,7 @@ zig build test --summary all    # 136/136 tests passed
 |---------|---------|---------|
 | [faf-cli](https://npmjs.com/package/faf-cli) | Node.js | `npm i -g faf-cli` |
 | [bun-sticky-faf](https://npmjs.com/package/bun-sticky-faf) | Bun | `bunx bun-sticky-faf` |
-| **bun-sticky-zig** | Native | Clone + build |
+| **bun-sticky-zig** | Native | `curl -fsSL .../install.sh \| bash` |
 
 ## License
 
