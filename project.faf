@@ -5,7 +5,7 @@
 faf_version: 2.5.0
 
 project:
-  name: bun-sticky
+  name: bun-sticky-zig
   goal: Zig-native FAF CLI with Wolfejam slot-based scoring
   main_language: Zig
   type: cli

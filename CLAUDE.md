@@ -5,8 +5,8 @@ Fastest bun under the sum. Zig-native FAF CLI.
 ## Quick Commands
 
 ```bash
-zig build test                           # Run 136 tests
-zig build -Doptimize=ReleaseFast         # Build (68KB binary)
+zig build test                           # Run 102 tests
+zig build -Doptimize=ReleaseFast         # Build (77KB binary)
 ./zig-out/bin/bun-sticky score           # Score current project
 ./zig-out/bin/bun-sticky help            # Show commands
 ```
@@ -59,17 +59,17 @@ bun-sticky-zig/
 
 | File | Purpose |
 |------|---------|
-| `src/scorer.zig:9` | SLOTS definition (21 slots) |
-| `src/scorer.zig:45` | TYPE_CATEGORIES mapping |
-| `src/scorer.zig:76` | calculateScore() function |
-| `src/tier.zig:14` | getTier() function |
-| `src/main.zig:55` | main() CLI entry |
+| `src/scorer.zig:16` | SLOTS definition (21 slots) |
+| `src/scorer.zig:60` | ProjectType enum |
+| `src/scorer.zig:248` | calculateScore() function |
+| `src/tier.zig:42` | getTier() function |
+| `src/main.zig:72` | main() CLI entry |
 
 ## Distribution
 
 **Source distribution** (poster child):
 ```bash
-git clone https://github.com/wolfejam/bun-sticky-zig
+git clone https://github.com/Wolfe-Jam/bun-sticky-zig
 cd bun-sticky-zig
 zig build -Doptimize=ReleaseFast
 ```
@@ -79,7 +79,7 @@ zig build -Doptimize=ReleaseFast
 **Bun is built on Zig.** This is how they would build it.
 
 - Zero runtime dependencies
-- 68KB release binary
+- 77KB release binary
 - Sub-millisecond cold start
 - Zig 0.15+ compatible
 
