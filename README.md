@@ -119,6 +119,24 @@ zig build test --summary all    # 136/136 tests passed
 | **bun-sticky-zig** | Native | `curl -fsSL .../install.sh \| bash` |
 | bun-sticky-zig-plus | Native | Color ASCII, bi-sync, --json (paid) |
 
+## Best Context Under the Bun
+
+**faf-cli v5.0.6** aligned the full FAF toolchain with Bun as a first-class runtime. bun-sticky-zig is the technical credibility layer beneath it all — a pure Zig parser running native inside the ecosystem that Bun itself is built on.
+
+Bun chose Zig. This parser speaks that same language. No transpilation, no runtime, no dependencies. Just Zig reading YAML at the speed of the metal.
+
+For the full CLI toolchain — `init`, `auto`, `go`, `bi-sync`, `tri-sync`, and 30+ commands — run:
+
+```bash
+bunx faf-cli auto       # Zero to 100% in one command, native on Bun
+bunx faf-cli init       # Create .faf from your local project
+bunx faf-cli go         # Guided interview to gold code
+```
+
+bun-sticky-zig is the Zig showcase: proof that FAF parses at the lowest level of the stack. faf-cli is the full toolchain: everything you need to score, sync, and ship.
+
+Read more: [Best Context Under the Bun](https://faf.one/blog/best-context-under-the-bun) — the full story on FAF + Bun alignment.
+
 ## License
 
 MIT
