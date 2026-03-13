@@ -44,6 +44,8 @@ cd bun-sticky-zig
 
 **77KB binary. Zero runtime dependencies.**
 
+Bun is built on Zig ⚡️ — so we did that too. Also available as a [TypeScript package on npm](https://npmjs.com/package/bun-sticky) — 1,100+ downloads.
+
 ## Usage
 
 ```bash
