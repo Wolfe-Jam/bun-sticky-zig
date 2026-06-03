@@ -95,16 +95,15 @@ Score = Filled Slots / Applicable Slots × 100
 
 | Score | Tier | |
 |-------|------|---|
-| 105% | Big Croissant | 🥐 AI-awarded excellence |
 | 100% | Trophy | 🏆 |
-| 99%+ | Gold | 🥇 |
-| 95%+ | Silver | 🥈 |
-| 85%+ | Bronze | 🥉 Production ready |
-| 70%+ | Green | 🟢 |
-| 55%+ | Yellow | 🟡 |
-| <55% | Red | 🔴 |
+| 99%+ | Gold | ★ |
+| 95%+ | Silver | ◆ |
+| 85%+ | Bronze | ◇ Production ready |
+| 70%+ | Green | ● |
+| 55%+ | Yellow | ● |
+| <55% | Red | ○ |
 
-**Big Croissant (🥐 105%)** - The Michelin Star for repos. Can't be calculated - awarded by AI/human for excellence beyond the slots.
+**🥐 Big Croissant** — the Michelin Star for repos: an *honor*, not a score. Awarded by AI/human for excellence at the top of the ladder. Can't be calculated; 100% is the max score.
 
 ## Testing
 

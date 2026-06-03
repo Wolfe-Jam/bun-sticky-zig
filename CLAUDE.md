@@ -42,18 +42,17 @@ bun-sticky-zig/
 
 ## Tier System
 
-| Score | Tier | Emoji | Notes |
-|-------|------|-------|-------|
-| 105% | Big Croissant | 🥐 | AI-awarded for excellence beyond 100% |
-| 100% | Trophy | 🏆 | Perfect score |
-| 99%+ | Gold | 🥇 | |
-| 95%+ | Silver | 🥈 | |
-| 85%+ | Bronze | 🥉 | Production ready |
-| 70%+ | Green | 🟢 | |
-| 55%+ | Yellow | 🟡 | |
-| <55% | Red | 🔴 | |
+| Score | Tier | Symbol | Notes |
+|-------|------|--------|-------|
+| 100% | Trophy | 🏆 | Perfect score (max) |
+| 99%+ | Gold | ★ | |
+| 95%+ | Silver | ◆ | |
+| 85%+ | Bronze | ◇ | Production ready |
+| 70%+ | Green | ● | |
+| 55%+ | Yellow | ● | |
+| <55% | Red | ○ | |
 
-**Big Croissant** is the Michelin Star - awarded for projects that score 100% AND demonstrate excellence: great docs, clean code, fast, well-tested.
+**🥐 Big Croissant** is the Michelin Star — an *honor*, not a score. Awarded for projects that hit 100% **and** demonstrate excellence (great docs, clean code, fast, well-tested). 100% is the max score.
 
 ## Key Files
 
