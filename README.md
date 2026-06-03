@@ -139,6 +139,16 @@ bun-sticky-zig is the Zig showcase: proof that FAF parses at the lowest level of
 
 Read more: [Best Context Under the Bun](https://faf.one/blog/best-context-under-the-bun) — the full story on FAF + Bun alignment.
 
+---
+
+### 🏎️ The FAF · Zig family
+*Bun is built on Zig ⚡ — so are we.*
+
+- **[ZEPH💨](https://github.com/Wolfe-Jam/xai-faf-zeph)** — Zig → WASM context engine (UCL), 2.7 KB
+- **[bun-sticky-zig](https://github.com/Wolfe-Jam/bun-sticky-zig)** — Zig-native FAF CLI, 77 KB, zero deps
+- **[bun-sticky](https://npmjs.com/package/bun-sticky)** — the TypeScript FAF CLI (npm)
+- **[.faf](https://faf.one)** — the IANA-registered context format (FAF🐘)
+
 ## License
 
 MIT
