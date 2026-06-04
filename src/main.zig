@@ -65,13 +65,42 @@ const BANNER =
     \\
 ;
 
+// ── WJTTC test hook ──────────────────────────────────────────────
+// When set (tests only), print/puts append into a fixed buffer instead
+// of writing to STDOUT, so card/JSON renderers become capturable and
+// assertable. Allocation-free; null in production (zero overhead path).
+const CardCapture = struct {
+    buf: [65536]u8 = undefined,
+    len: usize = 0,
+    truncated: bool = false,
+    fn write(self: *CardCapture, s: []const u8) void {
+        const space = self.buf.len - self.len;
+        const n = @min(space, s.len);
+        if (n < s.len) self.truncated = true;
+        @memcpy(self.buf[self.len .. self.len + n], s[0..n]);
+        self.len += n;
+    }
+    fn slice(self: *const CardCapture) []const u8 {
+        return self.buf[0..self.len];
+    }
+};
+var card_sink: ?*CardCapture = null;
+
 fn print(comptime fmt: []const u8, args: anytype) void {
     var buf: [4096]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf, fmt, args) catch return;
+    if (card_sink) |sink| {
+        sink.write(msg);
+        return;
+    }
     _ = posix.write(posix.STDOUT_FILENO, msg) catch {};
 }
 
 fn puts(s: []const u8) void {
+    if (card_sink) |sink| {
+        sink.write(s);
+        return;
+    }
     _ = posix.write(posix.STDOUT_FILENO, s) catch {};
 }
 
@@ -509,6 +538,30 @@ fn printHtmlCard(content: []const u8, result: scorer.ScoreResult, tier_name: []c
 
 // --svg: embeddable trading-card SVG (self-hosted, scales clean, README <img>).
 // Tier-colored border = rarity. Same dev data as the other cards.
+// ── Card visual decision logic (pure → unit-tested in WJTTC) ──────
+// Dark-moody tier color (border + score). Pops on charcoal.
+fn tierColor(score: u8) []const u8 {
+    return if (score >= 100) "#FFCB45" // gold (Trophy)
+    else if (score >= 85) "#3FB950" // green
+    else if (score >= 55) "#D29922" // amber
+    else "#F85149"; // red
+}
+
+// Tier glyph: 🏆 is the ONLY emoji (Trophy); sub-Trophy = clean geometric symbols.
+fn tierGlyph(score: u8) []const u8 {
+    return if (score >= 100) "\xf0\x9f\x8f\x86" // 🏆
+    else if (score >= 99) "\xe2\x98\x85" // ★
+    else if (score >= 95) "\xe2\x97\x86" // ◆
+    else if (score >= 85) "\xe2\x97\x87" // ◇
+    else if (score >= 55) "\xe2\x97\x8f" // ●
+    else "\xe2\x97\x8b"; // ○
+}
+
+// Section bar fill color by percentage.
+fn barColor(pct: u8) []const u8 {
+    return if (pct >= 85) "#3FB950" else if (pct >= 55) "#D29922" else "#F85149";
+}
+
 fn printSvgCard(content: []const u8, result: scorer.ScoreResult, tier_name: []const u8, name: []const u8, lang: []const u8) void {
     var sec_count: u8 = 0;
     for (sectionRows(result)) |s| {
@@ -517,15 +570,8 @@ fn printSvgCard(content: []const u8, result: scorer.ScoreResult, tier_name: []co
     const W: u16 = 340;
     const bars_top: u16 = 190;
     const H: u16 = bars_top + @as(u16, sec_count) * 24 + 44;
-    // Dark-moody tier colors (pop on charcoal)
-    const tcolor = if (result.score >= 100) "#FFCB45" else if (result.score >= 85) "#3FB950" else if (result.score >= 55) "#D29922" else "#F85149";
-    // Tier glyph: 🏆 is the ONLY emoji (Trophy); sub-Trophy = clean geometric symbols
-    const tsym = if (result.score >= 100) "\xf0\x9f\x8f\x86" // 🏆
-        else if (result.score >= 99) "\xe2\x98\x85" // ★
-        else if (result.score >= 95) "\xe2\x97\x86" // ◆
-        else if (result.score >= 85) "\xe2\x97\x87" // ◇
-        else if (result.score >= 55) "\xe2\x97\x8f" // ●
-        else "\xe2\x97\x8b"; // ○
+    const tcolor = tierColor(result.score);
+    const tsym = tierGlyph(result.score);
 
     print("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{d}\" height=\"{d}\" viewBox=\"0 0 {d} {d}\" font-family=\"-apple-system,Segoe UI,Helvetica,Arial,sans-serif\">\n", .{ W, H, W, H });
     puts("<defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#161b22\"/><stop offset=\"1\" stop-color=\"#0b0e14\"/></linearGradient>");
@@ -549,7 +595,7 @@ fn printSvgCard(content: []const u8, result: scorer.ScoreResult, tier_name: []co
     var y: u16 = bars_top;
     for (sectionRows(result)) |s| {
         if (s.r.total == 0) continue;
-        const bc = if (s.r.percentage >= 85) "#3FB950" else if (s.r.percentage >= 55) "#D29922" else "#F85149";
+        const bc = barColor(s.r.percentage);
         const fw: u16 = @intCast((@as(u32, s.r.percentage) * 150) / 100);
         print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#8b949e\">{s}</text>\n", .{ y + 9, s.label });
         print("<rect x=\"100\" y=\"{d}\" width=\"150\" height=\"8\" rx=\"4\" fill=\"#21262d\"/>\n", .{y + 2});
@@ -857,4 +903,236 @@ test "import scorer" {
 test "import tier" {
     const t = tier.getTier(100);
     try std.testing.expectEqualStrings("Trophy", t.name);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 🏁 WJTTC — Wolfe-Jam Test & Tuning Certification
+// Championship-grade coverage for the render/CLI layer.
+//   🏎️ ENGINE — core decision logic (colors, glyphs, JSON)
+//   🎨 LIVERY  — card output is well-formed + carries every design element
+//   🛑 BRAKE   — safety: escaping, never emit malformed markup
+//   🌬️ AERO    — fuzz / stress / determinism (the bug-finders)
+// ══════════════════════════════════════════════════════════════════
+
+const CLI_100 =
+    \\project:
+    \\  name: TestCLI
+    \\  goal: Test the system
+    \\  main_language: Zig
+    \\  type: cli
+    \\human_context:
+    \\  who: Developers
+    \\  what: A CLI tool
+    \\  why: Testing
+    \\  where: Terminal
+    \\  when: Now
+    \\  how: zig build run
+;
+
+// ── 🏎️ ENGINE ─────────────────────────────────────────────────────
+
+test "WJTTC ENGINE - tierColor boundaries" {
+    try std.testing.expectEqualStrings("#FFCB45", tierColor(100)); // gold
+    try std.testing.expectEqualStrings("#3FB950", tierColor(99)); // green
+    try std.testing.expectEqualStrings("#3FB950", tierColor(85));
+    try std.testing.expectEqualStrings("#D29922", tierColor(84)); // amber
+    try std.testing.expectEqualStrings("#D29922", tierColor(55));
+    try std.testing.expectEqualStrings("#F85149", tierColor(54)); // red
+    try std.testing.expectEqualStrings("#F85149", tierColor(0));
+}
+
+test "WJTTC ENGINE - tierGlyph follows the ladder, 🏆 only at 100" {
+    try std.testing.expectEqualStrings("\xf0\x9f\x8f\x86", tierGlyph(100)); // 🏆
+    try std.testing.expectEqualStrings("\xe2\x98\x85", tierGlyph(99)); // ★
+    try std.testing.expectEqualStrings("\xe2\x97\x86", tierGlyph(95)); // ◆
+    try std.testing.expectEqualStrings("\xe2\x97\x87", tierGlyph(85)); // ◇
+    try std.testing.expectEqualStrings("\xe2\x97\x8f", tierGlyph(70)); // ●
+    try std.testing.expectEqualStrings("\xe2\x97\x8f", tierGlyph(55)); // ●
+    try std.testing.expectEqualStrings("\xe2\x97\x8b", tierGlyph(54)); // ○
+    // The one emoji must never leak below a perfect score.
+    try std.testing.expect(std.mem.indexOf(u8, tierGlyph(99), "\xf0\x9f\x8f\x86") == null);
+}
+
+test "WJTTC ENGINE - barColor boundaries" {
+    try std.testing.expectEqualStrings("#3FB950", barColor(100));
+    try std.testing.expectEqualStrings("#3FB950", barColor(85));
+    try std.testing.expectEqualStrings("#D29922", barColor(84));
+    try std.testing.expectEqualStrings("#D29922", barColor(55));
+    try std.testing.expectEqualStrings("#F85149", barColor(54));
+}
+
+test "WJTTC ENGINE - sectionRows always returns the 5 canonical sections in order" {
+    const rows = sectionRows(scorer.calculateScore(CLI_100));
+    try std.testing.expectEqual(@as(usize, 5), rows.len);
+    try std.testing.expectEqualStrings("Project", rows[0].label);
+    try std.testing.expectEqualStrings("Frontend", rows[1].label);
+    try std.testing.expectEqualStrings("Backend", rows[2].label);
+    try std.testing.expectEqualStrings("Universal", rows[3].label);
+    try std.testing.expectEqualStrings("Human", rows[4].label);
+}
+
+// ── 🎨 LIVERY ──────────────────────────────────────────────────────
+
+test "WJTTC LIVERY - svg card is well-formed and carries every design element" {
+    var cap = CardCapture{};
+    const result = scorer.calculateScore(CLI_100);
+    card_sink = &cap;
+    printSvgCard(CLI_100, result, tier.getTierName(result.score), "demo", "Zig");
+    card_sink = null;
+
+    const out = cap.slice();
+    const body = std.mem.trimRight(u8, out, "\n");
+    try std.testing.expect(!cap.truncated);
+    try std.testing.expect(std.mem.startsWith(u8, out, "<svg"));
+    try std.testing.expect(std.mem.endsWith(u8, body, "</svg>"));
+    try std.testing.expect(std.mem.indexOf(u8, out, "\xf0\x9f\x8f\x86") != null); // 🏆 glyph
+    try std.testing.expect(std.mem.indexOf(u8, out, "url(#bg)") != null); // dark gradient
+    try std.testing.expect(std.mem.indexOf(u8, out, "filter=\"url(#glow)\"") != null); // glow
+    try std.testing.expect(std.mem.indexOf(u8, out, "100%") != null); // score
+    try std.testing.expect(std.mem.indexOf(u8, out, "Trophy") != null); // tier name
+    try std.testing.expect(std.mem.indexOf(u8, out, "demo") != null); // project name
+}
+
+test "WJTTC LIVERY - tier label is right-aligned (collision-proof, the v1.3.1 fix)" {
+    // The bug: tier name was pinned at x=128 and the wide "100%" overran it.
+    // The fix: right-anchored text. Lock it so the collision can't return.
+    var cap = CardCapture{};
+    const result = scorer.calculateScore(CLI_100);
+    card_sink = &cap;
+    printSvgCard(CLI_100, result, "Trophy", "demo", "Zig");
+    card_sink = null;
+    const out = cap.slice();
+    try std.testing.expect(std.mem.indexOf(u8, out, "text-anchor=\"end\"") != null);
+    // The old hard-coded collision coordinate must be gone.
+    try std.testing.expect(std.mem.indexOf(u8, out, "x=\"128\" y=\"140\"") == null);
+}
+
+test "WJTTC LIVERY - html and ascii cards render non-empty and name-bearing" {
+    const result = scorer.calculateScore(CLI_100);
+
+    var h = CardCapture{};
+    card_sink = &h;
+    printHtmlCard(CLI_100, result, "Trophy", "demo", "Zig");
+    card_sink = null;
+    try std.testing.expect(!h.truncated);
+    try std.testing.expect(h.slice().len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, h.slice(), "demo") != null);
+
+    var a = CardCapture{};
+    card_sink = &a;
+    printAsciiCard(CLI_100, result, "Trophy", "demo", "Zig");
+    card_sink = null;
+    try std.testing.expect(!a.truncated);
+    try std.testing.expect(a.slice().len > 0);
+}
+
+test "WJTTC LIVERY - grab emits JSON object with score and tier" {
+    // cmdGrab reads ./project.faf from cwd (the repo root during tests).
+    var cap = CardCapture{};
+    card_sink = &cap;
+    cmdGrab() catch {};
+    card_sink = null;
+    const out = cap.slice();
+    try std.testing.expect(!cap.truncated);
+    try std.testing.expect(std.mem.startsWith(u8, out, "{"));
+    try std.testing.expect(std.mem.indexOf(u8, out, "\"_score\":") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "\"_tier\":") != null);
+}
+
+// ── 🛑 BRAKE ───────────────────────────────────────────────────────
+
+test "WJTTC BRAKE - htmlEsc neutralizes markup-breaking characters" {
+    var cap = CardCapture{};
+    card_sink = &cap;
+    htmlEsc("<script>\"&\">");
+    card_sink = null;
+    const out = cap.slice();
+    try std.testing.expect(std.mem.indexOf(u8, out, "&lt;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "&gt;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "&amp;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "&quot;") != null);
+    // No raw opening tag may survive.
+    try std.testing.expect(std.mem.indexOf(u8, out, "<script") == null);
+}
+
+test "WJTTC BRAKE - hostile project name cannot break the svg document" {
+    const result = scorer.calculateScore(CLI_100);
+    var cap = CardCapture{};
+    card_sink = &cap;
+    printSvgCard(CLI_100, result, "Trophy", "</text><script>alert(1)</script>", "Zig");
+    card_sink = null;
+    const out = cap.slice();
+    // The injected raw tags must have been escaped, not emitted verbatim.
+    try std.testing.expect(std.mem.indexOf(u8, out, "<script>") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "&lt;script&gt;") != null);
+    const body = std.mem.trimRight(u8, out, "\n");
+    try std.testing.expect(std.mem.endsWith(u8, body, "</svg>"));
+}
+
+// ── 🌬️ AERO ────────────────────────────────────────────────────────
+
+test "WJTTC AERO - fuzz: random bytes never crash the scorer, score stays bounded" {
+    var prng = std.Random.DefaultPrng.init(0xF1F1F1F1);
+    const rand = prng.random();
+    var buf: [512]u8 = undefined;
+    var i: usize = 0;
+    while (i < 8000) : (i += 1) {
+        const len = rand.intRangeAtMost(usize, 0, buf.len);
+        rand.bytes(buf[0..len]);
+        const result = scorer.calculateScore(buf[0..len]);
+        try std.testing.expect(result.score <= 100);
+        try std.testing.expect(result.filled <= result.total);
+        _ = scorer.detectProjectType(buf[0..len]);
+    }
+}
+
+test "WJTTC AERO - fuzz: card renderer survives garbage content, output stays bounded" {
+    var prng = std.Random.DefaultPrng.init(0x68686868);
+    const rand = prng.random();
+    var buf: [256]u8 = undefined;
+    var i: usize = 0;
+    while (i < 3000) : (i += 1) {
+        const len = rand.intRangeAtMost(usize, 0, buf.len);
+        rand.bytes(buf[0..len]);
+        const result = scorer.calculateScore(buf[0..len]);
+        var cap = CardCapture{};
+        card_sink = &cap;
+        printSvgCard(buf[0..len], result, tier.getTierName(result.score), "fuzz", "x");
+        card_sink = null;
+        try std.testing.expect(!cap.truncated); // never blows the 64KB buffer
+        try std.testing.expect(std.mem.startsWith(u8, cap.slice(), "<svg"));
+    }
+}
+
+test "WJTTC AERO - fuzz: hostile names of any byte pattern keep the svg well-formed" {
+    const result = scorer.calculateScore(CLI_100);
+    var prng = std.Random.DefaultPrng.init(0xBADBEEF);
+    const rand = prng.random();
+    var nbuf: [64]u8 = undefined;
+    var i: usize = 0;
+    while (i < 3000) : (i += 1) {
+        const len = rand.intRangeAtMost(usize, 0, nbuf.len);
+        rand.bytes(nbuf[0..len]);
+        var cap = CardCapture{};
+        card_sink = &cap;
+        printSvgCard(CLI_100, result, "Trophy", nbuf[0..len], "Zig");
+        card_sink = null;
+        const out = cap.slice();
+        try std.testing.expect(!cap.truncated);
+        try std.testing.expect(std.mem.startsWith(u8, out, "<svg"));
+        const body = std.mem.trimRight(u8, out, "\n");
+        try std.testing.expect(std.mem.endsWith(u8, body, "</svg>"));
+    }
+}
+
+test "WJTTC AERO - deterministic: identical input yields byte-identical card" {
+    const result = scorer.calculateScore(CLI_100);
+    var a = CardCapture{};
+    var b = CardCapture{};
+    card_sink = &a;
+    printSvgCard(CLI_100, result, "Trophy", "Det", "Zig");
+    card_sink = &b;
+    printSvgCard(CLI_100, result, "Trophy", "Det", "Zig");
+    card_sink = null;
+    try std.testing.expectEqualSlices(u8, a.slice(), b.slice());
 }

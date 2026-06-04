@@ -140,8 +140,10 @@ Score = Filled Slots / Applicable Slots × 100
 ## Testing
 
 ```bash
-zig build test --summary all    # 136/136 tests passed
+zig build test --summary all    # 150/150 tests passed
 ```
+
+Certified by the **[WJTTC suite](tests/WJTTC-TEST-SUITE.md)** — F1-tiered: ENGINE (core logic), LIVERY (card rendering), BRAKE (safety/escaping), AERO (14k-iteration fuzz + determinism).
 
 ## FAF Ecosystem
 
