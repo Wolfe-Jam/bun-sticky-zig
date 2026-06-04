@@ -11,13 +11,15 @@ const tier = @import("tier.zig");
 const posix = std.posix;
 const fs = std.fs;
 
-const VERSION = "1.1.1";
+const VERSION = "1.2.0";
 
 // Global flags
 var no_color: bool = false;
 var json_output: bool = false;
 var badge_output: bool = false;
 var min_threshold: ?u32 = null;
+var print_html: bool = false;
+var ascii_output: bool = false;
 
 // ANSI colors (functions to respect --no-color)
 fn CYAN() []const u8 {
@@ -55,7 +57,7 @@ const BANNER =
     \\   ████     █▄▀  ▀▄▀ █ █   █▄▄ █ ▀▀█
     \\     ▀▀
     \\
-    \\bun-sticky v1.1.1 [ZIG]
+    \\bun-sticky v1.2.0 [ZIG]
     \\Fastest bun under the sum.
     \\
     \\────────────────────────────────────────────────
@@ -94,6 +96,14 @@ pub fn main() !void {
         } else if (std.mem.eql(u8, arg, "--badge")) {
             badge_output = true;
             no_color = true;
+        } else if (std.mem.eql(u8, arg, "--grabjson")) {
+            cmd = "grab"; // flag alias for the `grab` command
+        } else if (std.mem.eql(u8, arg, "--print")) {
+            print_html = true;
+            no_color = true;
+        } else if (std.mem.eql(u8, arg, "--ascii")) {
+            ascii_output = true;
+            no_color = true;
         } else if (std.mem.eql(u8, arg, "--min")) {
             want_min = true; // next arg is the threshold
         } else if (cmd[0] == 'h' and cmd.len == 4) {
@@ -102,6 +112,11 @@ pub fn main() !void {
         } else if (std.mem.eql(u8, cmd, "init") and init_name == null) {
             init_name = arg;
         }
+    }
+
+    // Output flags with no command imply `score`.
+    if (std.mem.eql(u8, cmd, "help") and (json_output or badge_output or print_html or ascii_output)) {
+        cmd = "score";
     }
 
     if (std.mem.eql(u8, cmd, "score")) {
@@ -114,6 +129,8 @@ pub fn main() !void {
         try cmdInit(name);
     } else if (std.mem.eql(u8, cmd, "sync")) {
         try cmdSync();
+    } else if (std.mem.eql(u8, cmd, "grab")) {
+        try cmdGrab();
     } else if (std.mem.eql(u8, cmd, "version") or std.mem.eql(u8, cmd, "-v") or std.mem.eql(u8, cmd, "--version")) {
         print("bun-sticky v{s}\n", .{VERSION});
     } else if (std.mem.eql(u8, cmd, "-h") or std.mem.eql(u8, cmd, "--help")) {
@@ -183,6 +200,22 @@ fn cmdScore() !void {
         return;
     }
 
+    const lang = extractValue(faf_content, "main_language:");
+
+    // ASCII score card (--ascii) — pure text, paste anywhere
+    if (ascii_output) {
+        printAsciiCard(faf_content, result, t.name, name, lang);
+        if (below_min) std.process.exit(1);
+        return;
+    }
+
+    // HTML score card (--print) — stdout snippet to move into a page
+    if (print_html) {
+        printHtmlCard(faf_content, result, t.name, name, lang);
+        if (below_min) std.process.exit(1);
+        return;
+    }
+
     // Print banner (human mode)
     puts(BANNER);
 
@@ -230,6 +263,237 @@ fn cmdScore() !void {
 
     // CI gate: exit non-zero if below --min threshold
     if (below_min) std.process.exit(1);
+}
+
+// ── JSON writer (escaped, fixed-buffer) ──────────────────────────────
+const JsonW = struct {
+    buf: []u8,
+    len: usize = 0,
+    fn rawc(self: *JsonW, c: u8) void {
+        if (self.len < self.buf.len) {
+            self.buf[self.len] = c;
+            self.len += 1;
+        }
+    }
+    fn raw(self: *JsonW, s: []const u8) void {
+        for (s) |c| self.rawc(c);
+    }
+    fn str(self: *JsonW, s: []const u8) void {
+        self.rawc('"');
+        for (s) |c| switch (c) {
+            '"' => self.raw("\\\""),
+            '\\' => self.raw("\\\\"),
+            '\n' => self.raw("\\n"),
+            '\r' => self.raw("\\r"),
+            '\t' => self.raw("\\t"),
+            else => {
+                if (c < 0x20) {
+                    var tmp: [8]u8 = undefined;
+                    self.raw(std.fmt.bufPrint(&tmp, "\\u{x:0>4}", .{c}) catch "");
+                } else self.rawc(c);
+            },
+        };
+        self.rawc('"');
+    }
+    fn num(self: *JsonW, v: u8) void {
+        var tmp: [8]u8 = undefined;
+        self.raw(std.fmt.bufPrint(&tmp, "{d}", .{v}) catch "0");
+    }
+    fn comma(self: *JsonW, first: *bool) void {
+        if (first.*) first.* = false else self.rawc(',');
+    }
+    fn slice(self: *JsonW) []const u8 {
+        return self.buf[0..self.len];
+    }
+};
+
+// `faf grab` (--grabjson): emit the parsed .faf as JSON — the CONTENT, not just
+// the score — so tools can grab a project's context. Score+tier appended as _score/_tier.
+fn cmdGrab() !void {
+    const file = fs.cwd().openFile("project.faf", .{}) catch {
+        puts("{\"error\":\"no project.faf found\"}\n");
+        return;
+    };
+    defer file.close();
+    var buf: [16384]u8 = undefined;
+    const n = file.readAll(&buf) catch {
+        puts("{\"error\":\"could not read project.faf\"}\n");
+        return;
+    };
+    const content = buf[0..n];
+
+    const result = scorer.calculateScore(content);
+    const t = tier.getTier(result.score);
+
+    var out: [32768]u8 = undefined;
+    var w = JsonW{ .buf = &out };
+    w.rawc('{');
+    var first = true;
+    var in_section = false;
+    var sec_first = false;
+
+    var it = std.mem.splitScalar(u8, content, '\n');
+    while (it.next()) |raw_line| {
+        var line = raw_line;
+        if (line.len > 0 and line[line.len - 1] == '\r') line = line[0 .. line.len - 1];
+        if (line.len == 0) continue;
+        var indent: usize = 0;
+        while (indent < line.len and line[indent] == ' ') indent += 1;
+        const trimmed = line[indent..];
+        if (trimmed.len == 0 or trimmed[0] == '#' or trimmed[0] == '-') continue;
+        const colon = std.mem.indexOfScalar(u8, trimmed, ':') orelse continue;
+        const key = std.mem.trim(u8, trimmed[0..colon], " ");
+        var val = std.mem.trim(u8, trimmed[colon + 1 ..], " ");
+        if (key.len == 0) continue;
+        if (std.mem.indexOf(u8, val, " #")) |h| val = std.mem.trim(u8, val[0..h], " "); // strip trailing comment
+
+        if (indent == 0) {
+            if (in_section) {
+                w.rawc('}');
+                in_section = false;
+            }
+            if (val.len == 0) {
+                w.comma(&first);
+                w.str(key);
+                w.rawc(':');
+                w.rawc('{');
+                in_section = true;
+                sec_first = true;
+            } else {
+                w.comma(&first);
+                w.str(key);
+                w.rawc(':');
+                w.str(val);
+            }
+        } else {
+            if (!in_section or val.len == 0) continue; // skip list-parents / nested
+            w.comma(&sec_first);
+            w.str(key);
+            w.rawc(':');
+            w.str(val);
+        }
+    }
+    if (in_section) w.rawc('}');
+    w.comma(&first);
+    w.str("_score");
+    w.rawc(':');
+    w.num(result.score);
+    w.comma(&first);
+    w.str("_tier");
+    w.rawc(':');
+    w.str(t.name);
+    w.rawc('}');
+    w.rawc('\n');
+    puts(w.slice());
+}
+
+// Generalized "key: value" extractor (first match, to end of line).
+fn extractValue(content: []const u8, key: []const u8) []const u8 {
+    if (std.mem.indexOf(u8, content, key)) |idx| {
+        var start = idx + key.len;
+        while (start < content.len and (content[start] == ' ' or content[start] == '\t')) start += 1;
+        var end = start;
+        while (end < content.len and content[end] != '\n' and content[end] != '\r') end += 1;
+        return std.mem.trim(u8, content[start..end], " ");
+    }
+    return "—";
+}
+
+const SectionRow = struct { label: []const u8, r: scorer.SectionResult };
+fn sectionRows(result: scorer.ScoreResult) [5]SectionRow {
+    return .{
+        .{ .label = "Project", .r = result.project },
+        .{ .label = "Frontend", .r = result.frontend },
+        .{ .label = "Backend", .r = result.backend },
+        .{ .label = "Universal", .r = result.universal },
+        .{ .label = "Human", .r = result.human },
+    };
+}
+
+// Print the empty (missing) slot keys, comma-separated. Returns true if any printed.
+fn printMissingNames(content: []const u8, result: scorer.ScoreResult) bool {
+    const Grp = struct { on: bool, slots: []const []const u8 };
+    const grps = [_]Grp{
+        .{ .on = result.project.total > 0, .slots = &scorer.PROJECT_SLOTS },
+        .{ .on = result.frontend.total > 0, .slots = &scorer.FRONTEND_SLOTS },
+        .{ .on = result.backend.total > 0, .slots = &scorer.BACKEND_SLOTS },
+        .{ .on = result.universal.total > 0, .slots = &scorer.UNIVERSAL_SLOTS },
+        .{ .on = result.human.total > 0, .slots = &scorer.HUMAN_SLOTS },
+    };
+    var any = false;
+    for (grps) |g| {
+        if (!g.on) continue;
+        for (g.slots) |slot| {
+            if (!scorer.hasSlotValue(content, slot)) {
+                if (any) puts(", ");
+                puts(slot);
+                any = true;
+            }
+        }
+    }
+    return any;
+}
+
+fn htmlEsc(s: []const u8) void {
+    for (s) |c| switch (c) {
+        '&' => puts("&amp;"),
+        '<' => puts("&lt;"),
+        '>' => puts("&gt;"),
+        '"' => puts("&quot;"),
+        else => {
+            const b = [_]u8{c};
+            puts(&b);
+        },
+    };
+}
+
+// --ascii: pure-text score card — the dev's project context + score + what's missing.
+fn printAsciiCard(content: []const u8, result: scorer.ScoreResult, tier_name: []const u8, name: []const u8, lang: []const u8) void {
+    puts("\n");
+    print("  {s}\n", .{name});
+    print("  {s} \xc2\xb7 {s}\n", .{ @tagName(result.project_type), lang });
+    puts("  ----------------------------------------\n");
+    print("  FAF  {d}%  {s}   {d}/{d} slots\n", .{ result.score, tier_name, result.filled, result.total });
+    puts("  ----------------------------------------\n");
+    for (sectionRows(result)) |s| {
+        if (s.r.total == 0) continue;
+        const width: u8 = 12;
+        const fb: u8 = @intCast((@as(u16, s.r.percentage) * @as(u16, width)) / 100);
+        print("  {s:<9}  ", .{s.label});
+        var i: u8 = 0;
+        while (i < fb) : (i += 1) puts("\xe2\x96\x88");
+        i = 0;
+        while (i < width - fb) : (i += 1) puts("\xe2\x96\x91");
+        print("  {d}%\n", .{s.r.percentage});
+    }
+    puts("  ----------------------------------------\n");
+    puts("  Missing: ");
+    if (!printMissingNames(content, result)) puts("none");
+    puts("\n\n");
+}
+
+// --print: self-contained HTML score card — drop/move into any page.
+fn printHtmlCard(content: []const u8, result: scorer.ScoreResult, tier_name: []const u8, name: []const u8, lang: []const u8) void {
+    const tcolor = if (result.score >= 100) "#1d8348" else if (result.score >= 85) "#27c93f" else if (result.score >= 55) "#d4a000" else "#c0392b";
+    puts("<div style=\"max-width:380px;font-family:-apple-system,Segoe UI,sans-serif;border:1px solid #e5e5e5;border-radius:12px;padding:20px;background:#fff;color:#1a1a1a\">\n");
+    puts("  <div style=\"font-size:20px;font-weight:800\">");
+    htmlEsc(name);
+    puts("</div>\n  <div style=\"color:#5b6570;font-size:13px;margin-bottom:14px\">");
+    htmlEsc(@tagName(result.project_type));
+    puts(" \xc2\xb7 ");
+    htmlEsc(lang);
+    puts("</div>\n");
+    puts("  <div style=\"font-size:12px;color:#5b6570;letter-spacing:.08em\">FAF SCORE</div>\n");
+    print("  <div style=\"font-size:40px;font-weight:800;color:{s}\">{d}%<span style=\"font-size:18px;font-weight:700;margin-left:8px;color:#1a1a1a\">{s}</span></div>\n", .{ tcolor, result.score, tier_name });
+    print("  <div style=\"color:#5b6570;font-size:13px;margin-bottom:14px\">{d} / {d} slots</div>\n", .{ result.filled, result.total });
+    for (sectionRows(result)) |s| {
+        if (s.r.total == 0) continue;
+        const bc = if (s.r.percentage >= 85) "#27c93f" else if (s.r.percentage >= 55) "#d4a000" else "#c0392b";
+        print("  <div style=\"display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px\"><span style=\"width:72px;color:#5b6570\">{s}</span><span style=\"flex:1;height:8px;background:#eee;border-radius:4px;overflow:hidden\"><span style=\"display:block;height:8px;width:{d}%;background:{s}\"></span></span><span style=\"width:34px;text-align:right;color:#1a1a1a\">{d}%</span></div>\n", .{ s.label, s.r.percentage, bc, s.r.percentage });
+    }
+    puts("  <div style=\"font-size:12px;color:#5b6570;margin-top:12px\">Missing: <span style=\"color:#1a1a1a\">");
+    if (!printMissingNames(content, result)) puts("none");
+    puts("</span></div>\n</div>\n");
 }
 
 fn printBar(label: []const u8, section: scorer.SectionResult) void {
@@ -495,12 +759,15 @@ fn cmdHelp() void {
     puts("    score         Show FAF score + tier\n");
     puts("    init <n>      Create project.faf\n");
     puts("    sync          Sync to CLAUDE.md\n");
+    puts("    grab          Emit parsed .faf as JSON (grab context)\n");
     puts("    version       Show version\n");
     puts("    help          Show this help\n\n");
     print("  {s}Options{s}\n\n", .{ BOLD(), RESET() });
     puts("    --json        Machine-readable JSON (CI / automation)\n");
     puts("    --badge       Print a shields.io README badge\n");
     puts("    --min <N>     Exit non-zero if score < N (CI gate)\n");
+    puts("    --print       HTML score card to stdout\n");
+    puts("    --ascii       ASCII score card to stdout\n");
     puts("    --no-color    Disable colored output\n\n");
     print("  {s}Zero dependencies. Pure Zig.{s}\n", .{ DIM(), RESET() });
     print("  {s}Wolfejam slot-based scoring.{s}\n\n", .{ DIM(), RESET() });
