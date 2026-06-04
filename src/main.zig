@@ -11,7 +11,7 @@ const tier = @import("tier.zig");
 const posix = std.posix;
 const fs = std.fs;
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 
 // Global flags
 var no_color: bool = false;
@@ -20,6 +20,7 @@ var badge_output: bool = false;
 var min_threshold: ?u32 = null;
 var print_html: bool = false;
 var ascii_output: bool = false;
+var svg_output: bool = false;
 
 // ANSI colors (functions to respect --no-color)
 fn CYAN() []const u8 {
@@ -57,7 +58,7 @@ const BANNER =
     \\   ████     █▄▀  ▀▄▀ █ █   █▄▄ █ ▀▀█
     \\     ▀▀
     \\
-    \\bun-sticky v1.2.0 [ZIG]
+    \\bun-sticky v1.3.0 [ZIG]
     \\Fastest bun under the sum.
     \\
     \\────────────────────────────────────────────────
@@ -104,6 +105,9 @@ pub fn main() !void {
         } else if (std.mem.eql(u8, arg, "--ascii")) {
             ascii_output = true;
             no_color = true;
+        } else if (std.mem.eql(u8, arg, "--svg")) {
+            svg_output = true;
+            no_color = true;
         } else if (std.mem.eql(u8, arg, "--min")) {
             want_min = true; // next arg is the threshold
         } else if (cmd[0] == 'h' and cmd.len == 4) {
@@ -115,7 +119,7 @@ pub fn main() !void {
     }
 
     // Output flags with no command imply `score`.
-    if (std.mem.eql(u8, cmd, "help") and (json_output or badge_output or print_html or ascii_output)) {
+    if (std.mem.eql(u8, cmd, "help") and (json_output or badge_output or print_html or ascii_output or svg_output)) {
         cmd = "score";
     }
 
@@ -212,6 +216,13 @@ fn cmdScore() !void {
     // HTML score card (--print) — stdout snippet to move into a page
     if (print_html) {
         printHtmlCard(faf_content, result, t.name, name, lang);
+        if (below_min) std.process.exit(1);
+        return;
+    }
+
+    // SVG trading card (--svg) — embeddable, self-hosted, scales clean
+    if (svg_output) {
+        printSvgCard(faf_content, result, t.name, name, lang);
         if (below_min) std.process.exit(1);
         return;
     }
@@ -496,6 +507,48 @@ fn printHtmlCard(content: []const u8, result: scorer.ScoreResult, tier_name: []c
     puts("</span></div>\n</div>\n");
 }
 
+// --svg: embeddable trading-card SVG (self-hosted, scales clean, README <img>).
+// Tier-colored border = rarity. Same dev data as the other cards.
+fn printSvgCard(content: []const u8, result: scorer.ScoreResult, tier_name: []const u8, name: []const u8, lang: []const u8) void {
+    var sec_count: u8 = 0;
+    for (sectionRows(result)) |s| {
+        if (s.r.total > 0) sec_count += 1;
+    }
+    const W: u16 = 340;
+    const bars_top: u16 = 172;
+    const H: u16 = bars_top + @as(u16, sec_count) * 24 + 44;
+    const tcolor = if (result.score >= 100) "#1d8348" else if (result.score >= 85) "#27c93f" else if (result.score >= 55) "#d4a000" else "#c0392b";
+
+    print("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{d}\" height=\"{d}\" viewBox=\"0 0 {d} {d}\" font-family=\"-apple-system,Segoe UI,Helvetica,Arial,sans-serif\">\n", .{ W, H, W, H });
+    print("<rect x=\"1.5\" y=\"1.5\" width=\"{d}\" height=\"{d}\" rx=\"16\" fill=\"#ffffff\" stroke=\"{s}\" stroke-width=\"3\"/>\n", .{ W - 3, H - 3, tcolor });
+    puts("<text x=\"22\" y=\"46\" font-size=\"22\" font-weight=\"700\" fill=\"#1a1a1a\">");
+    htmlEsc(name);
+    puts("</text>\n<text x=\"22\" y=\"68\" font-size=\"13\" fill=\"#5b6570\">");
+    htmlEsc(@tagName(result.project_type));
+    puts(" \xc2\xb7 ");
+    htmlEsc(lang);
+    puts("</text>\n");
+    puts("<text x=\"22\" y=\"100\" font-size=\"11\" letter-spacing=\"1.5\" fill=\"#5b6570\">FAF SCORE</text>\n");
+    print("<text x=\"22\" y=\"140\" font-size=\"42\" font-weight=\"800\" fill=\"{s}\">{d}%</text>\n", .{ tcolor, result.score });
+    print("<text x=\"128\" y=\"140\" font-size=\"19\" font-weight=\"700\" fill=\"#1a1a1a\">{s}</text>\n", .{tier_name});
+    print("<text x=\"22\" y=\"160\" font-size=\"12\" fill=\"#5b6570\">{d} / {d} slots</text>\n", .{ result.filled, result.total });
+
+    var y: u16 = bars_top;
+    for (sectionRows(result)) |s| {
+        if (s.r.total == 0) continue;
+        const bc = if (s.r.percentage >= 85) "#27c93f" else if (s.r.percentage >= 55) "#d4a000" else "#c0392b";
+        const fw: u16 = @intCast((@as(u32, s.r.percentage) * 150) / 100);
+        print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#5b6570\">{s}</text>\n", .{ y + 9, s.label });
+        print("<rect x=\"100\" y=\"{d}\" width=\"150\" height=\"8\" rx=\"4\" fill=\"#eeeeee\"/>\n", .{y + 2});
+        print("<rect x=\"100\" y=\"{d}\" width=\"{d}\" height=\"8\" rx=\"4\" fill=\"{s}\"/>\n", .{ y + 2, fw, bc });
+        print("<text x=\"262\" y=\"{d}\" font-size=\"11\" fill=\"#1a1a1a\">{d}%</text>\n", .{ y + 9, s.r.percentage });
+        y += 24;
+    }
+    print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#5b6570\">Missing: <tspan fill=\"#1a1a1a\">", .{y + 14});
+    if (!printMissingNames(content, result)) puts("none");
+    puts("</tspan></text>\n</svg>\n");
+}
+
 fn printBar(label: []const u8, section: scorer.SectionResult) void {
     const width: u8 = 12;
     // Use u16 to avoid overflow (100 * 12 = 1200)
@@ -768,6 +821,7 @@ fn cmdHelp() void {
     puts("    --min <N>     Exit non-zero if score < N (CI gate)\n");
     puts("    --print       HTML score card to stdout\n");
     puts("    --ascii       ASCII score card to stdout\n");
+    puts("    --svg         SVG trading card to stdout (embeddable)\n");
     puts("    --no-color    Disable colored output\n\n");
     print("  {s}Zero dependencies. Pure Zig.{s}\n", .{ DIM(), RESET() });
     print("  {s}Wolfejam slot-based scoring.{s}\n\n", .{ DIM(), RESET() });
