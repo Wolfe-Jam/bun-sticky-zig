@@ -50,6 +50,8 @@ cd bun-sticky-zig
 
 Bun is built on Zig ⚡️ — so we did that too. Also available as a [TypeScript package on npm](https://npmjs.com/package/bun-sticky) — 1,100+ downloads.
 
+> **The `faf` command.** bun-sticky installs as **`faf`** — the same command as the full [faf-cli](https://npmjs.com/package/faf-cli), and both score `.faf` files identically. If you have *both* installed, your PATH decides which runs (Homebrew will note that it's shadowed) — `faf score` works either way. bun-sticky is the **lite, zero-dependency, native** scorer; for the full toolchain (`taf`, `auto`, `go`, sync, …) use faf-cli. Same family, same `.faf`, same scores.
+
 ## Usage
 
 ```bash

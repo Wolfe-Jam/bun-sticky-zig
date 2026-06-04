@@ -11,7 +11,7 @@ const tier = @import("tier.zig");
 const posix = std.posix;
 const fs = std.fs;
 
-const VERSION = "1.1.0";
+const VERSION = "1.1.1";
 
 // Global flags
 var no_color: bool = false;
@@ -55,7 +55,7 @@ const BANNER =
     \\   ████     █▄▀  ▀▄▀ █ █   █▄▄ █ ▀▀█
     \\     ▀▀
     \\
-    \\bun-sticky v1.1.0 [ZIG]
+    \\bun-sticky v1.1.1 [ZIG]
     \\Fastest bun under the sum.
     \\
     \\────────────────────────────────────────────────
