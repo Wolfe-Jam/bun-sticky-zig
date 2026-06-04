@@ -5,7 +5,7 @@
 set -e
 
 REPO="Wolfe-Jam/bun-sticky-zig"
-VERSION="v1.0.5"
+VERSION="latest"   # always installs the newest release (no manual bump)
 INSTALL_DIR="${HOME}/.local/bin"
 
 # Detect platform
@@ -26,7 +26,7 @@ case "$ARCH" in
 esac
 
 BINARY="faf-${PLATFORM}-${ARCH}"
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY}"
+URL="https://github.com/${REPO}/releases/${VERSION}/download/${BINARY}"
 
 echo "Installing bun-sticky (faf)..."
 echo "  Platform: ${PLATFORM}-${ARCH}"
