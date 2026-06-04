@@ -11,7 +11,7 @@ const tier = @import("tier.zig");
 const posix = std.posix;
 const fs = std.fs;
 
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 
 // Global flags
 var no_color: bool = false;
@@ -58,7 +58,7 @@ const BANNER =
     \\   ████     █▄▀  ▀▄▀ █ █   █▄▄ █ ▀▀█
     \\     ▀▀
     \\
-    \\bun-sticky v1.3.0 [ZIG]
+    \\bun-sticky v1.3.1 [ZIG]
     \\Fastest bun under the sum.
     \\
     \\────────────────────────────────────────────────
@@ -515,36 +515,49 @@ fn printSvgCard(content: []const u8, result: scorer.ScoreResult, tier_name: []co
         if (s.r.total > 0) sec_count += 1;
     }
     const W: u16 = 340;
-    const bars_top: u16 = 172;
+    const bars_top: u16 = 190;
     const H: u16 = bars_top + @as(u16, sec_count) * 24 + 44;
-    const tcolor = if (result.score >= 100) "#1d8348" else if (result.score >= 85) "#27c93f" else if (result.score >= 55) "#d4a000" else "#c0392b";
+    // Dark-moody tier colors (pop on charcoal)
+    const tcolor = if (result.score >= 100) "#FFCB45" else if (result.score >= 85) "#3FB950" else if (result.score >= 55) "#D29922" else "#F85149";
+    // Tier glyph: 🏆 is the ONLY emoji (Trophy); sub-Trophy = clean geometric symbols
+    const tsym = if (result.score >= 100) "\xf0\x9f\x8f\x86" // 🏆
+        else if (result.score >= 99) "\xe2\x98\x85" // ★
+        else if (result.score >= 95) "\xe2\x97\x86" // ◆
+        else if (result.score >= 85) "\xe2\x97\x87" // ◇
+        else if (result.score >= 55) "\xe2\x97\x8f" // ●
+        else "\xe2\x97\x8b"; // ○
 
     print("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{d}\" height=\"{d}\" viewBox=\"0 0 {d} {d}\" font-family=\"-apple-system,Segoe UI,Helvetica,Arial,sans-serif\">\n", .{ W, H, W, H });
-    print("<rect x=\"1.5\" y=\"1.5\" width=\"{d}\" height=\"{d}\" rx=\"16\" fill=\"#ffffff\" stroke=\"{s}\" stroke-width=\"3\"/>\n", .{ W - 3, H - 3, tcolor });
-    puts("<text x=\"22\" y=\"46\" font-size=\"22\" font-weight=\"700\" fill=\"#1a1a1a\">");
+    puts("<defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#161b22\"/><stop offset=\"1\" stop-color=\"#0b0e14\"/></linearGradient>");
+    puts("<filter id=\"glow\" x=\"-40%\" y=\"-40%\" width=\"180%\" height=\"180%\"><feGaussianBlur stdDeviation=\"5\" result=\"b\"/><feMerge><feMergeNode in=\"b\"/><feMergeNode in=\"SourceGraphic\"/></feMerge></filter></defs>\n");
+    print("<rect x=\"1.5\" y=\"1.5\" width=\"{d}\" height=\"{d}\" rx=\"16\" fill=\"url(#bg)\" stroke=\"{s}\" stroke-width=\"3\"/>\n", .{ W - 3, H - 3, tcolor });
+    puts("<text x=\"22\" y=\"46\" font-size=\"22\" font-weight=\"700\" fill=\"#f0f6fc\">");
     htmlEsc(name);
-    puts("</text>\n<text x=\"22\" y=\"68\" font-size=\"13\" fill=\"#5b6570\">");
+    puts("</text>\n<text x=\"22\" y=\"68\" font-size=\"13\" fill=\"#8b949e\">");
     htmlEsc(@tagName(result.project_type));
     puts(" \xc2\xb7 ");
     htmlEsc(lang);
     puts("</text>\n");
-    puts("<text x=\"22\" y=\"100\" font-size=\"11\" letter-spacing=\"1.5\" fill=\"#5b6570\">FAF SCORE</text>\n");
-    print("<text x=\"22\" y=\"140\" font-size=\"42\" font-weight=\"800\" fill=\"{s}\">{d}%</text>\n", .{ tcolor, result.score });
-    print("<text x=\"128\" y=\"140\" font-size=\"19\" font-weight=\"700\" fill=\"#1a1a1a\">{s}</text>\n", .{tier_name});
-    print("<text x=\"22\" y=\"160\" font-size=\"12\" fill=\"#5b6570\">{d} / {d} slots</text>\n", .{ result.filled, result.total });
+    // Tier glyph, top-right, scaled as a design mark
+    print("<text x=\"{d}\" y=\"56\" text-anchor=\"end\" font-size=\"30\" fill=\"{s}\">{s}</text>\n", .{ W - 22, tcolor, tsym });
+    puts("<text x=\"22\" y=\"104\" font-size=\"11\" letter-spacing=\"1.5\" fill=\"#8b949e\">FAF SCORE</text>\n");
+    print("<text x=\"22\" y=\"150\" font-size=\"44\" font-weight=\"800\" fill=\"{s}\" filter=\"url(#glow)\">{d}%</text>\n", .{ tcolor, result.score });
+    // Tier name right-aligned — collision-proof regardless of score width
+    print("<text x=\"{d}\" y=\"150\" text-anchor=\"end\" font-size=\"20\" font-weight=\"700\" fill=\"#f0f6fc\">{s}</text>\n", .{ W - 22, tier_name });
+    print("<text x=\"22\" y=\"170\" font-size=\"12\" fill=\"#8b949e\">{d} / {d} slots</text>\n", .{ result.filled, result.total });
 
     var y: u16 = bars_top;
     for (sectionRows(result)) |s| {
         if (s.r.total == 0) continue;
-        const bc = if (s.r.percentage >= 85) "#27c93f" else if (s.r.percentage >= 55) "#d4a000" else "#c0392b";
+        const bc = if (s.r.percentage >= 85) "#3FB950" else if (s.r.percentage >= 55) "#D29922" else "#F85149";
         const fw: u16 = @intCast((@as(u32, s.r.percentage) * 150) / 100);
-        print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#5b6570\">{s}</text>\n", .{ y + 9, s.label });
-        print("<rect x=\"100\" y=\"{d}\" width=\"150\" height=\"8\" rx=\"4\" fill=\"#eeeeee\"/>\n", .{y + 2});
+        print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#8b949e\">{s}</text>\n", .{ y + 9, s.label });
+        print("<rect x=\"100\" y=\"{d}\" width=\"150\" height=\"8\" rx=\"4\" fill=\"#21262d\"/>\n", .{y + 2});
         print("<rect x=\"100\" y=\"{d}\" width=\"{d}\" height=\"8\" rx=\"4\" fill=\"{s}\"/>\n", .{ y + 2, fw, bc });
-        print("<text x=\"262\" y=\"{d}\" font-size=\"11\" fill=\"#1a1a1a\">{d}%</text>\n", .{ y + 9, s.r.percentage });
+        print("<text x=\"262\" y=\"{d}\" font-size=\"11\" fill=\"#c9d1d9\">{d}%</text>\n", .{ y + 9, s.r.percentage });
         y += 24;
     }
-    print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#5b6570\">Missing: <tspan fill=\"#1a1a1a\">", .{y + 14});
+    print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#8b949e\">Missing: <tspan fill=\"#c9d1d9\">", .{y + 14});
     if (!printMissingNames(content, result)) puts("none");
     puts("</tspan></text>\n</svg>\n");
 }
