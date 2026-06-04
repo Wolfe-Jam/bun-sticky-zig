@@ -19,6 +19,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Wolfe-Jam/bun-sticky-zig"><img src="https://img.shields.io/badge/FAF-100%25%20Trophy-brightgreen" alt="FAF Score"></a>
+</p>
+
+<p align="center">
   <a href="#install">Install</a> •
   <a href="#usage">Usage</a> •
   <a href="#scoring">Scoring</a> •
@@ -61,6 +65,16 @@ faf score             # Score it
 faf sync              # Sync to CLAUDE.md
 faf help              # Show commands
 ```
+
+**v1.1 — CI & badges:**
+
+```bash
+faf score --json      # Machine-readable JSON (CI / automation)
+faf score --badge     # Paste-ready shields.io README badge
+faf score --min 85    # Exit non-zero if score < 85 (CI gate)
+```
+
+Drop the badge in your README — `faf score --badge` prints the markdown, paste it, done.
 
 ## Why Zig?
 

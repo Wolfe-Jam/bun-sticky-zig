@@ -11,10 +11,13 @@ const tier = @import("tier.zig");
 const posix = std.posix;
 const fs = std.fs;
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
-// Global color state
+// Global flags
 var no_color: bool = false;
+var json_output: bool = false;
+var badge_output: bool = false;
+var min_threshold: ?u32 = null;
 
 // ANSI colors (functions to respect --no-color)
 fn CYAN() []const u8 {
@@ -52,7 +55,7 @@ const BANNER =
     \\   ████     █▄▀  ▀▄▀ █ █   █▄▄ █ ▀▀█
     \\     ▀▀
     \\
-    \\bun-sticky v1.0.0 [ZIG]
+    \\bun-sticky v1.1.0 [ZIG]
     \\Fastest bun under the sum.
     \\
     \\────────────────────────────────────────────────
@@ -75,13 +78,24 @@ pub fn main() !void {
     // Skip program name
     _ = args.skip();
 
-    // Check for --no-color flag first
     var cmd: []const u8 = "help";
     var init_name: ?[]const u8 = null;
+    var want_min = false;
 
     while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--no-color")) {
+        if (want_min) {
+            min_threshold = std.fmt.parseInt(u32, arg, 10) catch null;
+            want_min = false;
+        } else if (std.mem.eql(u8, arg, "--no-color")) {
             no_color = true;
+        } else if (std.mem.eql(u8, arg, "--json")) {
+            json_output = true;
+            no_color = true; // JSON mode implies no color
+        } else if (std.mem.eql(u8, arg, "--badge")) {
+            badge_output = true;
+            no_color = true;
+        } else if (std.mem.eql(u8, arg, "--min")) {
+            want_min = true; // next arg is the threshold
         } else if (cmd[0] == 'h' and cmd.len == 4) {
             // First non-flag arg is the command
             cmd = arg;
@@ -130,9 +144,6 @@ fn cmdScore() !void {
     const result = scorer.calculateScore(faf_content);
     const t = tier.getTier(result.score);
 
-    // Print banner
-    puts(BANNER);
-
     // Extract project name
     var name: []const u8 = "Unknown";
     if (std.mem.indexOf(u8, faf_content, "name:")) |idx| {
@@ -146,6 +157,34 @@ fn cmdScore() !void {
         }
         name = faf_content[start..end];
     }
+
+    // CI gate threshold (set via `--min N`)
+    const below_min = if (min_threshold) |m| result.score < m else false;
+
+    // Badge output for READMEs (--badge): ready-to-paste shields.io markdown
+    if (badge_output) {
+        const bcolor = if (result.score >= 100) "brightgreen" else if (result.score >= 85) "green" else if (result.score >= 70) "yellowgreen" else if (result.score >= 55) "yellow" else if (result.score >= 1) "orange" else "lightgrey";
+        print("![FAF](https://img.shields.io/badge/FAF-{d}%25%20{s}-{s})\n", .{ result.score, t.name, bcolor });
+        if (below_min) std.process.exit(1);
+        return;
+    }
+
+    // JSON output for CI / automation (lean: structured, no banner)
+    if (json_output) {
+        print("{{\"score\":{d},\"tier\":\"{s}\",\"filled\":{d},\"total\":{d},\"type\":\"{s}\",\"name\":\"{s}\"}}\n", .{
+            result.score,
+            t.name,
+            result.filled,
+            result.total,
+            @tagName(result.project_type),
+            name,
+        });
+        if (below_min) std.process.exit(1);
+        return;
+    }
+
+    // Print banner (human mode)
+    puts(BANNER);
 
     print("  Project: {s}{s}{s}\n", .{ BOLD(), name, RESET() });
     print("  Type:    {s}{s}{s}\n\n", .{ DIM(), @tagName(result.project_type), RESET() });
@@ -188,6 +227,9 @@ fn cmdScore() !void {
         printMissingSlots(faf_content, result);
         puts("\n");
     }
+
+    // CI gate: exit non-zero if below --min threshold
+    if (below_min) std.process.exit(1);
 }
 
 fn printBar(label: []const u8, section: scorer.SectionResult) void {
@@ -456,6 +498,9 @@ fn cmdHelp() void {
     puts("    version       Show version\n");
     puts("    help          Show this help\n\n");
     print("  {s}Options{s}\n\n", .{ BOLD(), RESET() });
+    puts("    --json        Machine-readable JSON (CI / automation)\n");
+    puts("    --badge       Print a shields.io README badge\n");
+    puts("    --min <N>     Exit non-zero if score < N (CI gate)\n");
     puts("    --no-color    Disable colored output\n\n");
     print("  {s}Zero dependencies. Pure Zig.{s}\n", .{ DIM(), RESET() });
     print("  {s}Wolfejam slot-based scoring.{s}\n\n", .{ DIM(), RESET() });
