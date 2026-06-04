@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Run all JavaScript actions on Node 24 (Node 20 deprecated; forced 2026-06-16).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -15,12 +19,12 @@ jobs:
         os: [ubuntu-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Zig
-        uses: mlugg/setup-zig@v1
+        uses: mlugg/setup-zig@v2
         with:
-          version: 0.14.0
+          version: 0.15.2
 
       - name: Run tests
         run: zig build test

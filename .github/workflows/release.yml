@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*'
 
+# Run all JavaScript actions on Node 24. Node 20 is deprecated and becomes
+# forced-default on 2026-06-16; this opts in early and covers actions that
+# don't yet ship a Node 24 runtime (setup-zig, upload/download-artifact).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -23,7 +29,7 @@ jobs:
             artifact: faf-macos-arm64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -58,7 +64,7 @@ jobs:
         run: find artifacts -type f
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
           generate_release_notes: true
