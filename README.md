@@ -94,6 +94,35 @@ faf grab               # Parsed .faf as JSON — build your own tools with conte
 
 The SVG card is self-contained (no shields dependency), tier-colored as a rarity border, and embeds anywhere an `<img>` does. Pipe it to a file and commit it: `faf --svg > assets/faf-card.svg`.
 
+## MyStack — your dev card
+
+The project card scores a *repo*. **MyStack** scores a *dev*. Write a personal `soul` `.faf` and render a reversible card — front is **you**, back is **your stack**:
+
+```bash
+faf mystack examples/wolfejam.faf          # static two-panel SVG (front profile / back stack)
+faf mystack --flip examples/wolfejam.faf   # interactive HTML flip-card → save and open in a browser
+```
+
+The flip-card flips on click (front ↔ back), keeps a persistent flip icon, shows a one-time hint you can dismiss for good, and has a **View all info** mode that shows both faces at once.
+
+A `soul` `.faf` is just your DNA as slots:
+
+```yaml
+app_type: soul
+soul:
+  handle: wolfejam
+  name: James Wolfe Harrison
+  role: Architect — .faf + .fafm
+  tagline: FAF defines. Bun delivers. WASM runs.
+stack:
+  languages: Rust, Zig, TypeScript, Python
+  runtimes: Bun, Cloudflare Workers, Cloud Run
+  frameworks: SvelteKit, Hono, FastMCP
+  tools: WASM, MCP, IANA media types
+```
+
+The card carries a real stat line — `slots · tier · langs` — so the more of your `.faf` you fill, the higher your card's tier climbs (red → amber → gold). Your context becomes something you level up.
+
 ## Why Zig?
 
 **Bun is built on Zig.** This CLI speaks Bun's native language.
