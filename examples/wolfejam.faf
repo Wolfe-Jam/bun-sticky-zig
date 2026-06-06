@@ -1,0 +1,25 @@
+faf_version: 1.0
+app_type: soul
+
+soul:
+  handle: wolfejam
+  name: James Wolfe Harrison
+  role: Architect — .faf + .fafm
+  tagline: FAF defines. Bun delivers. WASM runs.
+
+human_context:
+  who: Solo architect, FAF foundation
+  what: Project & Dev DNA for AI
+  why: Eliminate the context setup tax
+  where: faf.one
+
+stack:
+  languages: Rust, Zig, TypeScript, Python
+  runtimes: Bun, Cloudflare Workers, Cloud Run
+  frameworks: SvelteKit, Hono, FastMCP
+  tools: WASM, MCP, IANA media types
+
+links:
+  github: Wolfe-Jam
+  site: faf.one
+  orcid: 0009-0007-0801-3841

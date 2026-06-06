@@ -11,7 +11,7 @@ const tier = @import("tier.zig");
 const posix = std.posix;
 const fs = std.fs;
 
-const VERSION = "1.3.1";
+const VERSION = "1.4.0";
 
 // Global flags
 var no_color: bool = false;
@@ -21,6 +21,7 @@ var min_threshold: ?u32 = null;
 var print_html: bool = false;
 var ascii_output: bool = false;
 var svg_output: bool = false;
+var flip_output: bool = false; // mystack --flip → interactive HTML flip-card
 
 // ANSI colors (functions to respect --no-color)
 fn CYAN() []const u8 {
@@ -58,7 +59,7 @@ const BANNER =
     \\   ████     █▄▀  ▀▄▀ █ █   █▄▄ █ ▀▀█
     \\     ▀▀
     \\
-    \\bun-sticky v1.3.1 [ZIG]
+    \\bun-sticky v1.4.0 [ZIG]
     \\Fastest bun under the sum.
     \\
     \\────────────────────────────────────────────────
@@ -112,6 +113,7 @@ pub fn main() !void {
 
     var cmd: []const u8 = "help";
     var init_name: ?[]const u8 = null;
+    var soul_path: ?[]const u8 = null;
     var want_min = false;
 
     while (args.next()) |arg| {
@@ -137,6 +139,9 @@ pub fn main() !void {
         } else if (std.mem.eql(u8, arg, "--svg")) {
             svg_output = true;
             no_color = true;
+        } else if (std.mem.eql(u8, arg, "--flip")) {
+            flip_output = true;
+            no_color = true;
         } else if (std.mem.eql(u8, arg, "--min")) {
             want_min = true; // next arg is the threshold
         } else if (cmd[0] == 'h' and cmd.len == 4) {
@@ -144,6 +149,8 @@ pub fn main() !void {
             cmd = arg;
         } else if (std.mem.eql(u8, cmd, "init") and init_name == null) {
             init_name = arg;
+        } else if (std.mem.eql(u8, cmd, "mystack") and soul_path == null) {
+            soul_path = arg;
         }
     }
 
@@ -164,6 +171,8 @@ pub fn main() !void {
         try cmdSync();
     } else if (std.mem.eql(u8, cmd, "grab")) {
         try cmdGrab();
+    } else if (std.mem.eql(u8, cmd, "mystack")) {
+        try cmdMyStack(soul_path orelse "soul.faf");
     } else if (std.mem.eql(u8, cmd, "version") or std.mem.eql(u8, cmd, "-v") or std.mem.eql(u8, cmd, "--version")) {
         print("bun-sticky v{s}\n", .{VERSION});
     } else if (std.mem.eql(u8, cmd, "-h") or std.mem.eql(u8, cmd, "--help")) {
@@ -606,6 +615,232 @@ fn printSvgCard(content: []const u8, result: scorer.ScoreResult, tier_name: []co
     print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#8b949e\">Missing: <tspan fill=\"#c9d1d9\">", .{y + 14});
     if (!printMissingNames(content, result)) puts("none");
     puts("</tspan></text>\n</svg>\n");
+}
+
+// ── MyStack: the `soul` app-type (a dev's DNA → a flip-card) ──────
+// Phase 0+1 first cut: hand-authored soul .faf → static SVG, front+back
+// stacked. Front = profile (the soul); back = "MY STACK" (tech DNA).
+const SOUL_SLOTS = [_][]const u8{
+    "handle:",     "name:",      "role:",       "tagline:",
+    "who:",        "what:",      "why:",        "where:",
+    "languages:",  "runtimes:",  "frameworks:", "tools:",
+};
+
+const SoulScore = struct { filled: u8, total: u8, pct: u8 };
+
+// Real, honest completeness: filled soul slots / total. Feeds the card's
+// tier color + the Top-Trumps stat line (no fabricated number).
+fn soulScore(content: []const u8) SoulScore {
+    var filled: u8 = 0;
+    for (SOUL_SLOTS) |k| {
+        const v = extractValue(content, k);
+        if (v.len > 0 and !std.mem.eql(u8, v, "\xe2\x80\x94")) filled += 1; // not empty, not "—"
+    }
+    const total: u8 = SOUL_SLOTS.len;
+    const pct: u8 = @intCast((@as(u16, filled) * 100) / total);
+    return .{ .filled = filled, .total = total, .pct = pct };
+}
+
+// Count comma-separated items in a stack line (e.g. "Rust, Zig, TS" → 3).
+fn countCsv(v: []const u8) u8 {
+    if (v.len == 0 or std.mem.eql(u8, v, "\xe2\x80\x94")) return 0;
+    var n: u8 = 1;
+    for (v) |c| if (c == ',') {
+        n += 1;
+    };
+    return n;
+}
+
+fn cmdMyStack(path: []const u8) !void {
+    const file = fs.cwd().openFile(path, .{}) catch {
+        print("{s}No soul .faf found at {s}{s}\n", .{ RED(), path, RESET() });
+        print("{s}Usage: faf mystack <soul.faf>{s}\n", .{ DIM(), RESET() });
+        return;
+    };
+    defer file.close();
+    var buf: [16384]u8 = undefined;
+    const n = file.readAll(&buf) catch {
+        print("{s}Error reading {s}{s}\n", .{ RED(), path, RESET() });
+        return;
+    };
+    if (flip_output) printMyStackFlip(buf[0..n]) else printMyStackCard(buf[0..n]);
+}
+
+// Static MyStack SVG — two dark-moody panels stacked (front profile / back
+// stack). The 3D flip is a later web step; static shows both faces.
+fn printMyStackCard(content: []const u8) void {
+    const handle = extractValue(content, "handle:");
+    const name = extractValue(content, "name:");
+    const role = extractValue(content, "role:");
+    const tagline = extractValue(content, "tagline:");
+    const what = extractValue(content, "what:");
+    const github = extractValue(content, "github:");
+    const site = extractValue(content, "site:");
+    const languages = extractValue(content, "languages:");
+    const runtimes = extractValue(content, "runtimes:");
+    const frameworks = extractValue(content, "frameworks:");
+    const tools = extractValue(content, "tools:");
+
+    const ss = soulScore(content);
+    const tname = tier.getTierName(ss.pct);
+    const tcolor = tierColor(ss.pct);
+    const nlangs = countCsv(languages);
+
+    const W: u16 = 360;
+    const H: u16 = 388;
+
+    print("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{d}\" height=\"{d}\" viewBox=\"0 0 {d} {d}\" font-family=\"-apple-system,Segoe UI,Helvetica,Arial,sans-serif\">\n", .{ W, H, W, H });
+    puts("<defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#161b22\"/><stop offset=\"1\" stop-color=\"#0b0e14\"/></linearGradient></defs>\n");
+
+    // ── FRONT: the soul / profile ──
+    print("<rect x=\"12\" y=\"12\" width=\"336\" height=\"166\" rx=\"16\" fill=\"url(#bg)\" stroke=\"{s}\" stroke-width=\"3\"/>\n", .{tcolor});
+    print("<text x=\"32\" y=\"52\" font-size=\"24\" font-weight=\"800\" fill=\"{s}\">\xe2\x9a\xa1 ", .{tcolor});
+    htmlEsc(handle);
+    puts("</text>\n");
+    puts("<text x=\"32\" y=\"78\" font-size=\"15\" font-weight=\"700\" fill=\"#f0f6fc\">");
+    htmlEsc(name);
+    puts("</text>\n<text x=\"32\" y=\"98\" font-size=\"12\" fill=\"#8b949e\">");
+    htmlEsc(role);
+    puts("</text>\n<text x=\"32\" y=\"126\" font-size=\"13\" font-style=\"italic\" fill=\"#c9d1d9\">\xe2\x80\x9c");
+    htmlEsc(tagline);
+    puts("\xe2\x80\x9d</text>\n<text x=\"32\" y=\"150\" font-size=\"11\" fill=\"#8b949e\">");
+    htmlEsc(what);
+    puts("</text>\n<text x=\"32\" y=\"168\" font-size=\"11\" fill=\"#6e7681\">");
+    htmlEsc(github);
+    puts(" \xc2\xb7 ");
+    htmlEsc(site);
+    puts("</text>\n");
+
+    // ── BACK: MY STACK (tech DNA) ──
+    print("<rect x=\"12\" y=\"192\" width=\"336\" height=\"184\" rx=\"16\" fill=\"url(#bg)\" stroke=\"{s}\" stroke-width=\"3\"/>\n", .{tcolor});
+    puts("<text x=\"32\" y=\"222\" font-size=\"13\" letter-spacing=\"2\" fill=\"#8b949e\">MY STACK</text>\n");
+    const Row = struct { l: []const u8, v: []const u8 };
+    const rows = [_]Row{
+        .{ .l = "LANGUAGES", .v = languages },
+        .{ .l = "RUNTIMES", .v = runtimes },
+        .{ .l = "FRAMEWORKS", .v = frameworks },
+        .{ .l = "TOOLS", .v = tools },
+    };
+    var y: u16 = 244;
+    for (rows) |r| {
+        print("<text x=\"32\" y=\"{d}\" font-size=\"9\" letter-spacing=\"1\" fill=\"#6e7681\">{s}</text>\n", .{ y, r.l });
+        print("<text x=\"32\" y=\"{d}\" font-size=\"12\" fill=\"#f0f6fc\">", .{y + 15});
+        htmlEsc(r.v);
+        puts("</text>\n");
+        y += 28;
+    }
+    // Top-Trumps stat line (real numbers)
+    print("<text x=\"32\" y=\"366\" font-size=\"11\" font-weight=\"700\" fill=\"{s}\">{d}/{d} slots \xc2\xb7 {s} \xc2\xb7 {d} langs</text>\n", .{ tcolor, ss.filled, ss.total, tname, nlangs });
+    puts("</svg>\n");
+}
+
+// --flip: interactive HTML flip-card (Phase 3). Self-contained: equal faces,
+// click-anywhere 3D flip, persistent ↻ icon, first-time hint (localStorage
+// "don't show again"), and a "View all info" mode (both faces stacked).
+fn printMyStackFlip(content: []const u8) void {
+    const handle = extractValue(content, "handle:");
+    const name = extractValue(content, "name:");
+    const role = extractValue(content, "role:");
+    const tagline = extractValue(content, "tagline:");
+    const what = extractValue(content, "what:");
+    const github = extractValue(content, "github:");
+    const site = extractValue(content, "site:");
+    const languages = extractValue(content, "languages:");
+    const runtimes = extractValue(content, "runtimes:");
+    const frameworks = extractValue(content, "frameworks:");
+    const tools = extractValue(content, "tools:");
+    const ss = soulScore(content);
+    const tname = tier.getTierName(ss.pct);
+    const nlangs = countCsv(languages);
+
+    // Static head + CSS + hint + stage open (Zig multiline = no quote escaping).
+    puts(
+        \\<!doctype html>
+        \\<html lang="en"><head><meta charset="utf-8">
+        \\<meta name="viewport" content="width=device-width, initial-scale=1">
+        \\<title>MyStack</title>
+        \\<style>
+        \\  :root{--gold:#FFCB45;--fg:#f0f6fc;--muted:#8b949e;--soft:#c9d1d9;--dim:#6e7681}
+        \\  *{box-sizing:border-box}
+        \\  body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#07090d;color:var(--fg);font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+        \\  .stage{perspective:1400px}
+        \\  .card{position:relative;width:336px;height:208px;cursor:pointer;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.2,.7,.2,1)}
+        \\  .card.flipped{transform:rotateY(180deg)}
+        \\  .face{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;border:3px solid var(--gold);background:linear-gradient(#161b22,#0b0e14);padding:20px 24px;overflow:hidden}
+        \\  .face.back{transform:rotateY(180deg)}
+        \\  .flipicon{position:absolute;top:12px;right:14px;font-size:15px;color:var(--gold);opacity:.55;user-select:none}
+        \\  .handle{font-size:24px;font-weight:800;color:var(--gold);margin:2px 0 6px}
+        \\  .name{font-size:15px;font-weight:700} .role{font-size:12px;color:var(--muted);margin-top:2px}
+        \\  .tagline{font-size:13px;font-style:italic;color:var(--soft);margin-top:12px}
+        \\  .what{font-size:11px;color:var(--muted);margin-top:10px} .links{font-size:11px;color:var(--dim);margin-top:6px}
+        \\  .stacktitle{font-size:13px;letter-spacing:2px;color:var(--muted);margin-bottom:6px}
+        \\  .row{margin-top:8px} .row .lbl{font-size:9px;letter-spacing:1px;color:var(--dim)} .row .val{font-size:12px;color:var(--fg)}
+        \\  .stat{margin-top:12px;font-size:11px;font-weight:700;color:var(--gold)}
+        \\  .hint{display:flex;align-items:center;gap:8px;background:#11161f;border:1px solid #232a36;border-radius:999px;padding:6px 12px;font-size:12px;color:var(--soft)}
+        \\  .hint b{color:var(--gold);font-weight:700} .hint .x{cursor:pointer;color:var(--dim);font-weight:700;padding:0 2px} .hint .x:hover{color:var(--fg)} .hint.gone{display:none}
+        \\  .viewall{background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;font-family:inherit} .viewall:hover{color:var(--fg)}
+        \\  .stacked{display:none;flex-direction:column;gap:14px}
+        \\  body.both .stage{display:none} body.both .stacked{display:flex}
+        \\  .stacked .face{position:relative;inset:auto;backface-visibility:visible;transform:none;width:336px;height:208px}
+        \\</style></head><body>
+        \\  <div class="hint" id="hint"><span><b>Tap the card to flip</b> — front is you, back is your stack</span><span class="x" id="hintx" title="don't show again">✕</span></div>
+        \\  <div class="stage"><div class="card" id="card">
+        \\
+    );
+
+    // FRONT face (dynamic)
+    puts("  <div class=\"face front\"><span class=\"flipicon\">\xe2\x86\xbb</span>\n    <div class=\"handle\">\xe2\x9a\xa1 ");
+    htmlEsc(handle);
+    puts("</div>\n    <div class=\"name\">");
+    htmlEsc(name);
+    puts("</div>\n    <div class=\"role\">");
+    htmlEsc(role);
+    puts("</div>\n    <div class=\"tagline\">\xe2\x80\x9c");
+    htmlEsc(tagline);
+    puts("\xe2\x80\x9d</div>\n    <div class=\"what\">");
+    htmlEsc(what);
+    puts("</div>\n    <div class=\"links\">");
+    htmlEsc(github);
+    puts(" \xc2\xb7 ");
+    htmlEsc(site);
+    puts("</div>\n  </div>\n");
+
+    // BACK face (dynamic)
+    puts("  <div class=\"face back\"><span class=\"flipicon\">\xe2\x86\xbb</span>\n    <div class=\"stacktitle\">MY STACK</div>\n");
+    const Row = struct { l: []const u8, v: []const u8 };
+    const rows = [_]Row{
+        .{ .l = "LANGUAGES", .v = languages },
+        .{ .l = "RUNTIMES", .v = runtimes },
+        .{ .l = "FRAMEWORKS", .v = frameworks },
+        .{ .l = "TOOLS", .v = tools },
+    };
+    for (rows) |r| {
+        puts("    <div class=\"row\"><div class=\"lbl\">");
+        puts(r.l);
+        puts("</div><div class=\"val\">");
+        htmlEsc(r.v);
+        puts("</div></div>\n");
+    }
+    print("    <div class=\"stat\">{d}/{d} slots \xc2\xb7 {s} \xc2\xb7 {d} langs</div>\n", .{ ss.filled, ss.total, tname, nlangs });
+    puts("  </div>\n");
+
+    // Static tail: close card+stage, stacked container, view-all button, script.
+    puts(
+        \\  </div></div>
+        \\  <div class="stacked" id="stacked"></div>
+        \\  <button class="viewall" id="viewall">View all info ▾</button>
+        \\<script>
+        \\  var card=document.getElementById('card'),hint=document.getElementById('hint');
+        \\  if(localStorage.getItem('mystack-hint')==='off')hint.classList.add('gone');
+        \\  function dh(){hint.classList.add('gone');localStorage.setItem('mystack-hint','off');}
+        \\  document.getElementById('hintx').addEventListener('click',function(e){e.stopPropagation();dh();});
+        \\  card.addEventListener('click',function(){card.classList.toggle('flipped');dh();});
+        \\  var s=document.getElementById('stacked');s.innerHTML=card.innerHTML;
+        \\  var b=document.getElementById('viewall');
+        \\  b.addEventListener('click',function(){document.body.classList.toggle('both');b.textContent=document.body.classList.contains('both')?'Flip card ▴':'View all info ▾';});
+        \\</script></body></html>
+        \\
+    );
 }
 
 fn printBar(label: []const u8, section: scorer.SectionResult) void {
@@ -1123,6 +1358,99 @@ test "WJTTC AERO - fuzz: hostile names of any byte pattern keep the svg well-for
         const body = std.mem.trimRight(u8, out, "\n");
         try std.testing.expect(std.mem.endsWith(u8, body, "</svg>"));
     }
+}
+
+// ── 🪪 MyStack (soul app-type) ─────────────────────────────────────
+
+const SOUL_FAF =
+    \\app_type: soul
+    \\soul:
+    \\  handle: wolfejam
+    \\  name: James Wolfe Harrison
+    \\  role: Architect
+    \\  tagline: FAF defines.
+    \\human_context:
+    \\  who: Solo architect
+    \\  what: Project & Dev DNA for AI
+    \\  why: Eliminate setup tax
+    \\  where: faf.one
+    \\stack:
+    \\  languages: Rust, Zig, TypeScript, Python
+    \\  runtimes: Bun, Cloudflare Workers
+    \\  frameworks: SvelteKit, Hono
+    \\  tools: WASM, MCP
+    \\links:
+    \\  github: Wolfe-Jam
+    \\  site: faf.one
+;
+
+test "WJTTC ENGINE - soulScore counts filled soul slots + countCsv" {
+    const s = soulScore(SOUL_FAF);
+    try std.testing.expectEqual(@as(u8, 12), s.total);
+    try std.testing.expectEqual(@as(u8, 12), s.filled); // all 12 present
+    try std.testing.expectEqual(@as(u8, 100), s.pct);
+    try std.testing.expectEqual(@as(u8, 4), countCsv("Rust, Zig, TypeScript, Python"));
+    try std.testing.expectEqual(@as(u8, 1), countCsv("Rust"));
+    try std.testing.expectEqual(@as(u8, 0), countCsv("\xe2\x80\x94")); // "—" = none
+}
+
+test "WJTTC LIVERY - mystack card has both faces, the stack, and a stat line" {
+    var cap = CardCapture{};
+    card_sink = &cap;
+    printMyStackCard(SOUL_FAF);
+    card_sink = null;
+    const out = cap.slice();
+    const body = std.mem.trimRight(u8, out, "\n");
+    try std.testing.expect(!cap.truncated);
+    try std.testing.expect(std.mem.startsWith(u8, out, "<svg"));
+    try std.testing.expect(std.mem.endsWith(u8, body, "</svg>"));
+    try std.testing.expect(std.mem.indexOf(u8, out, "wolfejam") != null); // handle (front)
+    try std.testing.expect(std.mem.indexOf(u8, out, "MY STACK") != null); // back face
+    try std.testing.expect(std.mem.indexOf(u8, out, "Rust, Zig") != null); // stack DNA
+    try std.testing.expect(std.mem.indexOf(u8, out, "langs") != null); // Top-Trumps stat
+    // Two stacked panels = two rounded borders.
+    var rects: usize = 0;
+    var i: usize = 0;
+    while (std.mem.indexOfPos(u8, out, i, "rx=\"16\"")) |p| {
+        rects += 1;
+        i = p + 1;
+    }
+    try std.testing.expect(rects >= 2);
+}
+
+test "WJTTC LIVERY - mystack --flip emits self-contained HTML with both faces + flip JS" {
+    var cap = CardCapture{};
+    card_sink = &cap;
+    printMyStackFlip(SOUL_FAF);
+    card_sink = null;
+    const out = cap.slice();
+    try std.testing.expect(!cap.truncated);
+    try std.testing.expect(std.mem.indexOf(u8, out, "<!doctype html>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "class=\"face front\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "class=\"face back\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "wolfejam") != null); // injected handle
+    try std.testing.expect(std.mem.indexOf(u8, out, "Rust, Zig") != null); // injected stack
+    try std.testing.expect(std.mem.indexOf(u8, out, "classList.toggle('flipped')") != null); // flip wired
+    try std.testing.expect(std.mem.indexOf(u8, out, "mystack-hint") != null); // dismissible hint
+    try std.testing.expect(std.mem.endsWith(u8, std.mem.trimRight(u8, out, "\n"), "</html>"));
+}
+
+test "WJTTC BRAKE - mystack escapes a hostile handle, stays well-formed" {
+    const hostile =
+        \\soul:
+        \\  handle: </text><script>x</script>
+        \\  name: x
+        \\stack:
+        \\  languages: Rust
+    ;
+    var cap = CardCapture{};
+    card_sink = &cap;
+    printMyStackCard(hostile);
+    card_sink = null;
+    const out = cap.slice();
+    try std.testing.expect(std.mem.indexOf(u8, out, "<script>") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "&lt;script&gt;") != null);
+    try std.testing.expect(std.mem.endsWith(u8, std.mem.trimRight(u8, out, "\n"), "</svg>"));
 }
 
 test "WJTTC AERO - deterministic: identical input yields byte-identical card" {
