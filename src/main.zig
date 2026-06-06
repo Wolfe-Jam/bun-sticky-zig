@@ -11,7 +11,7 @@ const tier = @import("tier.zig");
 const posix = std.posix;
 const fs = std.fs;
 
-const VERSION = "1.4.0";
+const VERSION = "1.4.1";
 
 // Global flags
 var no_color: bool = false;
@@ -59,7 +59,7 @@ const BANNER =
     \\   ████     █▄▀  ▀▄▀ █ █   █▄▄ █ ▀▀█
     \\     ▀▀
     \\
-    \\bun-sticky v1.4.0 [ZIG]
+    \\bun-sticky v1.4.1 [ZIG]
     \\Fastest bun under the sum.
     \\
     \\────────────────────────────────────────────────
@@ -651,6 +651,23 @@ fn countCsv(v: []const u8) u8 {
     return n;
 }
 
+// A soul slot is empty if extractValue found nothing ("—") or an empty value.
+fn isEmpty(v: []const u8) bool {
+    return v.len == 0 or std.mem.eql(u8, v, "\xe2\x80\x94");
+}
+
+// One SVG value line that becomes a dim italic "add ___" prompt when empty —
+// so a first-time card reads as a fillable invite, not a broken full card.
+fn svgVal(y: u16, size: u8, val_color: []const u8, val: []const u8, prompt: []const u8) void {
+    if (isEmpty(val)) {
+        print("<text x=\"32\" y=\"{d}\" font-size=\"{d}\" font-style=\"italic\" fill=\"#586069\">{s}</text>\n", .{ y, size, prompt });
+    } else {
+        print("<text x=\"32\" y=\"{d}\" font-size=\"{d}\" fill=\"{s}\">", .{ y, size, val_color });
+        htmlEsc(val);
+        puts("</text>\n");
+    }
+}
+
 fn cmdMyStack(path: []const u8) !void {
     const file = fs.cwd().openFile(path, .{}) catch {
         print("{s}No soul .faf found at {s}{s}\n", .{ RED(), path, RESET() });
@@ -699,38 +716,52 @@ fn printMyStackCard(content: []const u8) void {
     puts("</text>\n");
     puts("<text x=\"32\" y=\"78\" font-size=\"15\" font-weight=\"700\" fill=\"#f0f6fc\">");
     htmlEsc(name);
-    puts("</text>\n<text x=\"32\" y=\"98\" font-size=\"12\" fill=\"#8b949e\">");
-    htmlEsc(role);
-    puts("</text>\n<text x=\"32\" y=\"126\" font-size=\"13\" font-style=\"italic\" fill=\"#c9d1d9\">\xe2\x80\x9c");
-    htmlEsc(tagline);
-    puts("\xe2\x80\x9d</text>\n<text x=\"32\" y=\"150\" font-size=\"11\" fill=\"#8b949e\">");
-    htmlEsc(what);
-    puts("</text>\n<text x=\"32\" y=\"168\" font-size=\"11\" fill=\"#6e7681\">");
-    htmlEsc(github);
-    puts(" \xc2\xb7 ");
-    htmlEsc(site);
     puts("</text>\n");
+    svgVal(98, 12, "#8b949e", role, "add role");
+    // tagline (quoted when present; dim prompt when empty)
+    if (isEmpty(tagline)) {
+        puts("<text x=\"32\" y=\"126\" font-size=\"13\" font-style=\"italic\" fill=\"#586069\">add tagline</text>\n");
+    } else {
+        puts("<text x=\"32\" y=\"126\" font-size=\"13\" font-style=\"italic\" fill=\"#c9d1d9\">\xe2\x80\x9c");
+        htmlEsc(tagline);
+        puts("\xe2\x80\x9d</text>\n");
+    }
+    // what + links: shown only when present (a sparse card stays clean, not "—")
+    if (!isEmpty(what)) {
+        puts("<text x=\"32\" y=\"150\" font-size=\"11\" fill=\"#8b949e\">");
+        htmlEsc(what);
+        puts("</text>\n");
+    }
+    if (!isEmpty(github) or !isEmpty(site)) {
+        puts("<text x=\"32\" y=\"168\" font-size=\"11\" fill=\"#6e7681\">");
+        if (!isEmpty(github)) htmlEsc(github);
+        if (!isEmpty(github) and !isEmpty(site)) puts(" \xc2\xb7 ");
+        if (!isEmpty(site)) htmlEsc(site);
+        puts("</text>\n");
+    }
 
     // ── BACK: MY STACK (tech DNA) ──
     print("<rect x=\"12\" y=\"192\" width=\"336\" height=\"184\" rx=\"16\" fill=\"url(#bg)\" stroke=\"{s}\" stroke-width=\"3\"/>\n", .{tcolor});
     puts("<text x=\"32\" y=\"222\" font-size=\"13\" letter-spacing=\"2\" fill=\"#8b949e\">MY STACK</text>\n");
-    const Row = struct { l: []const u8, v: []const u8 };
+    const Row = struct { l: []const u8, v: []const u8, p: []const u8 };
     const rows = [_]Row{
-        .{ .l = "LANGUAGES", .v = languages },
-        .{ .l = "RUNTIMES", .v = runtimes },
-        .{ .l = "FRAMEWORKS", .v = frameworks },
-        .{ .l = "TOOLS", .v = tools },
+        .{ .l = "LANGUAGES", .v = languages, .p = "add languages" },
+        .{ .l = "RUNTIMES", .v = runtimes, .p = "add runtimes" },
+        .{ .l = "FRAMEWORKS", .v = frameworks, .p = "add frameworks" },
+        .{ .l = "TOOLS", .v = tools, .p = "add tools" },
     };
     var y: u16 = 244;
     for (rows) |r| {
         print("<text x=\"32\" y=\"{d}\" font-size=\"9\" letter-spacing=\"1\" fill=\"#6e7681\">{s}</text>\n", .{ y, r.l });
-        print("<text x=\"32\" y=\"{d}\" font-size=\"12\" fill=\"#f0f6fc\">", .{y + 15});
-        htmlEsc(r.v);
-        puts("</text>\n");
+        svgVal(y + 15, 12, "#f0f6fc", r.v, r.p);
         y += 28;
     }
-    // Top-Trumps stat line (real numbers)
-    print("<text x=\"32\" y=\"366\" font-size=\"11\" font-weight=\"700\" fill=\"{s}\">{d}/{d} slots \xc2\xb7 {s} \xc2\xb7 {d} langs</text>\n", .{ tcolor, ss.filled, ss.total, tname, nlangs });
+    // Top-Trumps stat line — real numbers; sub-Trophy cards get a "level up" nudge.
+    if (ss.pct >= 100) {
+        print("<text x=\"32\" y=\"366\" font-size=\"11\" font-weight=\"700\" fill=\"{s}\">{d}/{d} slots \xc2\xb7 {s} \xc2\xb7 {d} langs</text>\n", .{ tcolor, ss.filled, ss.total, tname, nlangs });
+    } else {
+        print("<text x=\"32\" y=\"366\" font-size=\"11\" font-weight=\"700\" fill=\"{s}\">{d}/{d} slots \xc2\xb7 {s} \xc2\xb7 {d} langs \xe2\x96\xb8 level up</text>\n", .{ tcolor, ss.filled, ss.total, tname, nlangs });
+    }
     puts("</svg>\n");
 }
 
@@ -775,6 +806,7 @@ fn printMyStackFlip(content: []const u8) void {
         \\  .what{font-size:11px;color:var(--muted);margin-top:10px} .links{font-size:11px;color:var(--dim);margin-top:6px}
         \\  .stacktitle{font-size:13px;letter-spacing:2px;color:var(--muted);margin-bottom:6px}
         \\  .row{margin-top:8px} .row .lbl{font-size:9px;letter-spacing:1px;color:var(--dim)} .row .val{font-size:12px;color:var(--fg)}
+        \\  .prompt{color:#586069;font-style:italic}
         \\  .stat{margin-top:12px;font-size:11px;font-weight:700;color:var(--gold)}
         \\  .hint{display:flex;align-items:center;gap:8px;background:#11161f;border:1px solid #232a36;border-radius:999px;padding:6px 12px;font-size:12px;color:var(--soft)}
         \\  .hint b{color:var(--gold);font-weight:700} .hint .x{cursor:pointer;color:var(--dim);font-weight:700;padding:0 2px} .hint .x:hover{color:var(--fg)} .hint.gone{display:none}
@@ -793,35 +825,61 @@ fn printMyStackFlip(content: []const u8) void {
     htmlEsc(handle);
     puts("</div>\n    <div class=\"name\">");
     htmlEsc(name);
-    puts("</div>\n    <div class=\"role\">");
-    htmlEsc(role);
-    puts("</div>\n    <div class=\"tagline\">\xe2\x80\x9c");
-    htmlEsc(tagline);
-    puts("\xe2\x80\x9d</div>\n    <div class=\"what\">");
-    htmlEsc(what);
-    puts("</div>\n    <div class=\"links\">");
-    htmlEsc(github);
-    puts(" \xc2\xb7 ");
-    htmlEsc(site);
-    puts("</div>\n  </div>\n");
+    puts("</div>\n");
+    if (isEmpty(role)) {
+        puts("    <div class=\"role prompt\">add role</div>\n");
+    } else {
+        puts("    <div class=\"role\">");
+        htmlEsc(role);
+        puts("</div>\n");
+    }
+    if (isEmpty(tagline)) {
+        puts("    <div class=\"tagline prompt\">add tagline</div>\n");
+    } else {
+        puts("    <div class=\"tagline\">\xe2\x80\x9c");
+        htmlEsc(tagline);
+        puts("\xe2\x80\x9d</div>\n");
+    }
+    if (!isEmpty(what)) {
+        puts("    <div class=\"what\">");
+        htmlEsc(what);
+        puts("</div>\n");
+    }
+    if (!isEmpty(github) or !isEmpty(site)) {
+        puts("    <div class=\"links\">");
+        if (!isEmpty(github)) htmlEsc(github);
+        if (!isEmpty(github) and !isEmpty(site)) puts(" \xc2\xb7 ");
+        if (!isEmpty(site)) htmlEsc(site);
+        puts("</div>\n");
+    }
+    puts("  </div>\n");
 
     // BACK face (dynamic)
     puts("  <div class=\"face back\"><span class=\"flipicon\">\xe2\x86\xbb</span>\n    <div class=\"stacktitle\">MY STACK</div>\n");
-    const Row = struct { l: []const u8, v: []const u8 };
+    const Row = struct { l: []const u8, v: []const u8, p: []const u8 };
     const rows = [_]Row{
-        .{ .l = "LANGUAGES", .v = languages },
-        .{ .l = "RUNTIMES", .v = runtimes },
-        .{ .l = "FRAMEWORKS", .v = frameworks },
-        .{ .l = "TOOLS", .v = tools },
+        .{ .l = "LANGUAGES", .v = languages, .p = "add languages" },
+        .{ .l = "RUNTIMES", .v = runtimes, .p = "add runtimes" },
+        .{ .l = "FRAMEWORKS", .v = frameworks, .p = "add frameworks" },
+        .{ .l = "TOOLS", .v = tools, .p = "add tools" },
     };
     for (rows) |r| {
         puts("    <div class=\"row\"><div class=\"lbl\">");
         puts(r.l);
-        puts("</div><div class=\"val\">");
-        htmlEsc(r.v);
+        if (isEmpty(r.v)) {
+            puts("</div><div class=\"val prompt\">");
+            puts(r.p);
+        } else {
+            puts("</div><div class=\"val\">");
+            htmlEsc(r.v);
+        }
         puts("</div></div>\n");
     }
-    print("    <div class=\"stat\">{d}/{d} slots \xc2\xb7 {s} \xc2\xb7 {d} langs</div>\n", .{ ss.filled, ss.total, tname, nlangs });
+    if (ss.pct >= 100) {
+        print("    <div class=\"stat\">{d}/{d} slots \xc2\xb7 {s} \xc2\xb7 {d} langs</div>\n", .{ ss.filled, ss.total, tname, nlangs });
+    } else {
+        print("    <div class=\"stat\">{d}/{d} slots \xc2\xb7 {s} \xc2\xb7 {d} langs \xe2\x96\xb8 level up</div>\n", .{ ss.filled, ss.total, tname, nlangs });
+    }
     puts("  </div>\n");
 
     // Static tail: close card+stage, stacked container, view-all button, script.
@@ -1433,6 +1491,31 @@ test "WJTTC LIVERY - mystack --flip emits self-contained HTML with both faces + 
     try std.testing.expect(std.mem.indexOf(u8, out, "classList.toggle('flipped')") != null); // flip wired
     try std.testing.expect(std.mem.indexOf(u8, out, "mystack-hint") != null); // dismissible hint
     try std.testing.expect(std.mem.endsWith(u8, std.mem.trimRight(u8, out, "\n"), "</html>"));
+}
+
+test "WJTTC LIVERY - sparse soul card coaches with 'add ___' prompts, no — holes, level-up nudge" {
+    const sparse =
+        \\app_type: soul
+        \\soul:
+        \\  handle: newdev
+        \\  name: Jordan
+    ;
+    // static SVG
+    var cap = CardCapture{};
+    card_sink = &cap;
+    printMyStackCard(sparse);
+    card_sink = null;
+    const svg = cap.slice();
+    try std.testing.expect(std.mem.indexOf(u8, svg, "add languages") != null); // empty stack → prompt
+    try std.testing.expect(std.mem.indexOf(u8, svg, "add role") != null); // empty front → prompt
+    try std.testing.expect(std.mem.indexOf(u8, svg, "level up") != null); // sub-Trophy nudge
+    try std.testing.expect(std.mem.indexOf(u8, svg, ">\xe2\x80\x94<") == null); // NO bare "—" holes
+    // flip HTML coaches too (prompt class)
+    var c2 = CardCapture{};
+    card_sink = &c2;
+    printMyStackFlip(sparse);
+    card_sink = null;
+    try std.testing.expect(std.mem.indexOf(u8, c2.slice(), "val prompt\">add languages") != null);
 }
 
 test "WJTTC BRAKE - mystack escapes a hostile handle, stays well-formed" {
