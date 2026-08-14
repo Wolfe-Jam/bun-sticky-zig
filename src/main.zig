@@ -230,7 +230,7 @@ fn cmdScore() !void {
 
     // JSON output for CI / automation (lean: structured, no banner)
     if (json_output) {
-        print("{{\"score\":{d},\"tier\":\"{s}\",\"filled\":{d},\"total\":{d},\"type\":\"{s}\",\"name\":\"{s}\"}}\n", .{
+        print("{{\"score\":{d},\"tier\":\"{s}\",\"filled\":{d},\"total\":{d},\"type\":\"{s}\",\"name\":\"{s}\",\"approx\":true}}\n", .{
             result.score,
             t.name,
             result.filled,
@@ -287,6 +287,9 @@ fn cmdScore() !void {
     if (result.human.total > 0) {
         printBar("Human    ", result.human);
     }
+    if (result.enterprise.total > 0) {
+        printBar("Enterprise", result.enterprise);
+    }
 
     puts("\n");
 
@@ -301,7 +304,8 @@ fn cmdScore() !void {
         t.name,
         RESET(),
     });
-    print("  {s}Filled: {d}/{d} slots{s}\n\n", .{ DIM(), result.filled, result.total, RESET() });
+    print("  {s}Filled: {d}/{d} slots{s}\n", .{ DIM(), result.filled, result.total, RESET() });
+    print("  {s}Zig-native approximation of faf-cli's live scorer — not authoritative.{s}\n\n", .{ DIM(), RESET() });
 
     // Show missing slots if not 100%
     if (result.score < 100) {
@@ -449,13 +453,16 @@ fn extractValue(content: []const u8, key: []const u8) []const u8 {
 }
 
 const SectionRow = struct { label: []const u8, r: scorer.SectionResult };
-fn sectionRows(result: scorer.ScoreResult) [5]SectionRow {
+fn sectionRows(result: scorer.ScoreResult) [6]SectionRow {
     return .{
         .{ .label = "Project", .r = result.project },
         .{ .label = "Frontend", .r = result.frontend },
         .{ .label = "Backend", .r = result.backend },
         .{ .label = "Universal", .r = result.universal },
         .{ .label = "Human", .r = result.human },
+        // Zero total (hidden by the `total > 0` skip callers already use)
+        // unless the file shows a monorepo/enterprise signal.
+        .{ .label = "Enterprise", .r = result.enterprise },
     };
 }
 
@@ -468,6 +475,7 @@ fn printMissingNames(content: []const u8, result: scorer.ScoreResult) bool {
         .{ .on = result.backend.total > 0, .slots = &scorer.BACKEND_SLOTS },
         .{ .on = result.universal.total > 0, .slots = &scorer.UNIVERSAL_SLOTS },
         .{ .on = result.human.total > 0, .slots = &scorer.HUMAN_SLOTS },
+        .{ .on = result.enterprise.total > 0, .slots = &scorer.ENTERPRISE_SLOTS },
     };
     var any = false;
     for (grps) |g| {
@@ -518,12 +526,14 @@ fn printAsciiCard(content: []const u8, result: scorer.ScoreResult, tier_name: []
     puts("  ----------------------------------------\n");
     puts("  Missing: ");
     if (!printMissingNames(content, result)) puts("none");
-    puts("\n\n");
+    puts("\n  Zig-native approximation, not authoritative.\n\n");
 }
 
 // --print: self-contained HTML score card — drop/move into any page.
 fn printHtmlCard(content: []const u8, result: scorer.ScoreResult, tier_name: []const u8, name: []const u8, lang: []const u8) void {
-    const tcolor = if (result.score >= 100) "#1d8348" else if (result.score >= 85) "#27c93f" else if (result.score >= 55) "#d4a000" else "#c0392b";
+    // Was a fourth independent tier-color band (#1d8348/#27c93f/#d4a000/#c0392b)
+    // that disagreed with tier.zig. Now the one source of truth.
+    const tcolor = tier.getTierHex(result.score);
     puts("<div style=\"max-width:380px;font-family:-apple-system,Segoe UI,sans-serif;border:1px solid #e5e5e5;border-radius:12px;padding:20px;background:#fff;color:#1a1a1a\">\n");
     puts("  <div style=\"font-size:20px;font-weight:800\">");
     htmlEsc(name);
@@ -542,30 +552,14 @@ fn printHtmlCard(content: []const u8, result: scorer.ScoreResult, tier_name: []c
     }
     puts("  <div style=\"font-size:12px;color:#5b6570;margin-top:12px\">Missing: <span style=\"color:#1a1a1a\">");
     if (!printMissingNames(content, result)) puts("none");
-    puts("</span></div>\n</div>\n");
+    puts("</span></div>\n");
+    puts("  <div style=\"font-size:10px;color:#8b949e;font-style:italic;margin-top:6px\">Zig-native approximation, not authoritative</div>\n</div>\n");
 }
 
 // --svg: embeddable trading-card SVG (self-hosted, scales clean, README <img>).
 // Tier-colored border = rarity. Same dev data as the other cards.
 // ── Card visual decision logic (pure → unit-tested in WJTTC) ──────
 // Dark-moody tier color (border + score). Pops on charcoal.
-fn tierColor(score: u8) []const u8 {
-    return if (score >= 100) "#FFCB45" // gold (Trophy)
-    else if (score >= 85) "#3FB950" // green
-    else if (score >= 55) "#D29922" // amber
-    else "#F85149"; // red
-}
-
-// Tier glyph: 🏆 is the ONLY emoji (Trophy); sub-Trophy = clean geometric symbols.
-fn tierGlyph(score: u8) []const u8 {
-    return if (score >= 100) "\xf0\x9f\x8f\x86" // 🏆
-    else if (score >= 99) "\xe2\x98\x85" // ★
-    else if (score >= 95) "\xe2\x97\x86" // ◆
-    else if (score >= 85) "\xe2\x97\x87" // ◇
-    else if (score >= 55) "\xe2\x97\x8f" // ●
-    else "\xe2\x97\x8b"; // ○
-}
-
 // Section bar fill color by percentage.
 fn barColor(pct: u8) []const u8 {
     return if (pct >= 85) "#3FB950" else if (pct >= 55) "#D29922" else "#F85149";
@@ -578,9 +572,9 @@ fn printSvgCard(content: []const u8, result: scorer.ScoreResult, tier_name: []co
     }
     const W: u16 = 340;
     const bars_top: u16 = 190;
-    const H: u16 = bars_top + @as(u16, sec_count) * 24 + 44;
-    const tcolor = tierColor(result.score);
-    const tsym = tierGlyph(result.score);
+    const H: u16 = bars_top + @as(u16, sec_count) * 24 + 62; // +18 over the old 44 for the disclaimer line
+    const tcolor = tier.getTierHex(result.score);
+    const tsym = tier.getTierEmoji(result.score);
 
     print("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{d}\" height=\"{d}\" viewBox=\"0 0 {d} {d}\" font-family=\"-apple-system,Segoe UI,Helvetica,Arial,sans-serif\">\n", .{ W, H, W, H });
     puts("<defs><linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#161b22\"/><stop offset=\"1\" stop-color=\"#0b0e14\"/></linearGradient>");
@@ -614,7 +608,9 @@ fn printSvgCard(content: []const u8, result: scorer.ScoreResult, tier_name: []co
     }
     print("<text x=\"22\" y=\"{d}\" font-size=\"11\" fill=\"#8b949e\">Missing: <tspan fill=\"#c9d1d9\">", .{y + 14});
     if (!printMissingNames(content, result)) puts("none");
-    puts("</tspan></text>\n</svg>\n");
+    puts("</tspan></text>\n");
+    print("<text x=\"22\" y=\"{d}\" font-size=\"9\" fill=\"#586069\" font-style=\"italic\">Zig-native approximation, not authoritative</text>\n", .{y + 32});
+    puts("</svg>\n");
 }
 
 // ── MyStack: the `soul` app-type (a dev's DNA → a flip-card) ──────
@@ -700,7 +696,7 @@ fn printMyStackCard(content: []const u8) void {
 
     const ss = soulScore(content);
     const tname = tier.getTierName(ss.pct);
-    const tcolor = tierColor(ss.pct);
+    const tcolor = tier.getTierHex(ss.pct);
     const nlangs = countCsv(languages);
 
     const W: u16 = 360;
@@ -968,6 +964,15 @@ fn printMissingSlots(content: []const u8, result: scorer.ScoreResult) void {
             }
         }
     }
+
+    // Check enterprise slots if applicable (monorepo/enterprise signal detected)
+    if (result.enterprise.total > 0) {
+        for (scorer.ENTERPRISE_SLOTS) |slot| {
+            if (!scorer.hasSlotValue(content, slot)) {
+                print("    {s}{s}{s}: \"{s}\"\n", .{ CYAN(), slot, RESET(), getHint(slot) });
+            }
+        }
+    }
 }
 
 fn getHint(slot: []const u8) []const u8 {
@@ -997,6 +1002,20 @@ fn getHint(slot: []const u8) []const u8 {
     if (std.mem.eql(u8, slot, "stack.hosting")) return "Vercel";
     if (std.mem.eql(u8, slot, "stack.build")) return "vite";
     if (std.mem.eql(u8, slot, "stack.cicd")) return "GitHub Actions";
+
+    // Enterprise hints
+    if (std.mem.eql(u8, slot, "stack.monorepo_tool")) return "Turborepo";
+    if (std.mem.eql(u8, slot, "stack.package_manager")) return "pnpm";
+    if (std.mem.eql(u8, slot, "stack.workspaces")) return "packages/*";
+    if (std.mem.eql(u8, slot, "monorepo.packages_count")) return "12";
+    if (std.mem.eql(u8, slot, "monorepo.build_orchestrator")) return "Turborepo";
+    if (std.mem.eql(u8, slot, "stack.admin")) return "Retool";
+    if (std.mem.eql(u8, slot, "stack.cache")) return "Redis";
+    if (std.mem.eql(u8, slot, "stack.search")) return "Elasticsearch";
+    if (std.mem.eql(u8, slot, "stack.storage")) return "S3";
+    if (std.mem.eql(u8, slot, "monorepo.versioning_strategy")) return "changesets";
+    if (std.mem.eql(u8, slot, "monorepo.shared_configs")) return "eslint-config";
+    if (std.mem.eql(u8, slot, "monorepo.remote_cache")) return "Turborepo remote cache";
 
     return "";
 }
@@ -1132,6 +1151,23 @@ fn cmdSync() !void {
         goal = faf_content[start..end];
     }
 
+    // Refuse to clobber a CLAUDE.md we didn't write ourselves. createFile()
+    // truncates by default — a hand-authored CLAUDE.md (the common case,
+    // and the whole point of the file) would be destroyed with no backup.
+    // Safe to overwrite only if it already carries our own sync signature.
+    const SYNC_SIGNATURE = "*Synced by bun-sticky*";
+    if (fs.cwd().openFile("CLAUDE.md", .{})) |existing| {
+        var exist_buf: [16384]u8 = undefined;
+        const exist_len = existing.readAll(&exist_buf) catch 0;
+        existing.close();
+        const is_ours = std.mem.indexOf(u8, exist_buf[0..exist_len], SYNC_SIGNATURE) != null;
+        if (!is_ours) {
+            print("{s}CLAUDE.md already exists and wasn't written by bun-sticky{s}\n", .{ RED(), RESET() });
+            print("  {s}Refusing to overwrite — move it aside first if you want to sync here.{s}\n\n", .{ DIM(), RESET() });
+            return;
+        }
+    } else |_| {}
+
     // Write CLAUDE.md
     const out_file = try fs.cwd().createFile("CLAUDE.md", .{});
     defer out_file.close();
@@ -1147,9 +1183,9 @@ fn cmdSync() !void {
         \\Filled: {d}/{d} slots
         \\
         \\---
-        \\*Synced by bun-sticky*
+        \\{s}
         \\
-    , .{ name, goal, t.emoji, result.score, result.filled, result.total }) catch return;
+    , .{ name, goal, t.emoji, result.score, result.filled, result.total, SYNC_SIGNATURE }) catch return;
 
     _ = out_file.writeAll(md) catch return;
 
@@ -1207,6 +1243,10 @@ test "import tier" {
 //   🌬️ AERO    — fuzz / stress / determinism (the bug-finders)
 // ══════════════════════════════════════════════════════════════════
 
+// Fills all 21 base slots (not just project+human) — under the old
+// per-type model, a cli-type project only needed 9 for 100%. That model
+// was wrong (verified against live faf-cli); this fixture now needs the
+// same 21 base slots every project type needs.
 const CLI_100 =
     \\project:
     \\  name: TestCLI
@@ -1220,30 +1260,45 @@ const CLI_100 =
     \\  where: Terminal
     \\  when: Now
     \\  how: zig build run
+    \\stack:
+    \\  frontend: none
+    \\  css_framework: none
+    \\  ui_library: none
+    \\  state_management: none
+    \\  backend: none
+    \\  api_type: none
+    \\  runtime: Zig
+    \\  database: none
+    \\  connection: none
+    \\  hosting: GitHub
+    \\  build: zig build
+    \\  cicd: GitHub Actions
 ;
 
 // ── 🏎️ ENGINE ─────────────────────────────────────────────────────
 
-test "WJTTC ENGINE - tierColor boundaries" {
-    try std.testing.expectEqualStrings("#FFCB45", tierColor(100)); // gold
-    try std.testing.expectEqualStrings("#3FB950", tierColor(99)); // green
-    try std.testing.expectEqualStrings("#3FB950", tierColor(85));
-    try std.testing.expectEqualStrings("#D29922", tierColor(84)); // amber
-    try std.testing.expectEqualStrings("#D29922", tierColor(55));
-    try std.testing.expectEqualStrings("#F85149", tierColor(54)); // red
-    try std.testing.expectEqualStrings("#F85149", tierColor(0));
+test "WJTTC ENGINE - tier.getTierHex boundaries (via tier.zig, not a local copy)" {
+    try std.testing.expectEqualStrings("#FFCB45", tier.getTierHex(100)); // trophy
+    try std.testing.expectEqualStrings("#FFCB45", tier.getTierHex(99)); // gold
+    try std.testing.expectEqualStrings("#00D4D4", tier.getTierHex(95)); // silver
+    try std.testing.expectEqualStrings("#00A0A0", tier.getTierHex(85)); // bronze
+    try std.testing.expectEqualStrings("#3FB950", tier.getTierHex(70)); // green
+    try std.testing.expectEqualStrings("#D29922", tier.getTierHex(55)); // yellow
+    try std.testing.expectEqualStrings("#F85149", tier.getTierHex(1)); // red
+    try std.testing.expectEqualStrings("#8B949E", tier.getTierHex(0)); // white
 }
 
-test "WJTTC ENGINE - tierGlyph follows the ladder, 🏆 only at 100" {
-    try std.testing.expectEqualStrings("\xf0\x9f\x8f\x86", tierGlyph(100)); // 🏆
-    try std.testing.expectEqualStrings("\xe2\x98\x85", tierGlyph(99)); // ★
-    try std.testing.expectEqualStrings("\xe2\x97\x86", tierGlyph(95)); // ◆
-    try std.testing.expectEqualStrings("\xe2\x97\x87", tierGlyph(85)); // ◇
-    try std.testing.expectEqualStrings("\xe2\x97\x8f", tierGlyph(70)); // ●
-    try std.testing.expectEqualStrings("\xe2\x97\x8f", tierGlyph(55)); // ●
-    try std.testing.expectEqualStrings("\xe2\x97\x8b", tierGlyph(54)); // ○
-    // The one emoji must never leak below a perfect score.
-    try std.testing.expect(std.mem.indexOf(u8, tierGlyph(99), "\xf0\x9f\x8f\x86") == null);
+test "WJTTC ENGINE - tier.getTierEmoji follows the ladder, proof seal only at 100" {
+    try std.testing.expectEqualStrings("✪", tier.getTierEmoji(100));
+    try std.testing.expectEqualStrings("★", tier.getTierEmoji(99));
+    try std.testing.expectEqualStrings("◆", tier.getTierEmoji(95));
+    try std.testing.expectEqualStrings("◇", tier.getTierEmoji(85));
+    try std.testing.expectEqualStrings("●", tier.getTierEmoji(70));
+    try std.testing.expectEqualStrings("●", tier.getTierEmoji(55));
+    try std.testing.expectEqualStrings("○", tier.getTierEmoji(1));
+    try std.testing.expectEqualStrings("♡", tier.getTierEmoji(0));
+    // The proof seal must never leak below a perfect score.
+    try std.testing.expect(!std.mem.eql(u8, tier.getTierEmoji(99), "✪"));
 }
 
 test "WJTTC ENGINE - barColor boundaries" {
@@ -1254,14 +1309,15 @@ test "WJTTC ENGINE - barColor boundaries" {
     try std.testing.expectEqualStrings("#F85149", barColor(54));
 }
 
-test "WJTTC ENGINE - sectionRows always returns the 5 canonical sections in order" {
+test "WJTTC ENGINE - sectionRows always returns the 6 canonical sections in order" {
     const rows = sectionRows(scorer.calculateScore(CLI_100));
-    try std.testing.expectEqual(@as(usize, 5), rows.len);
+    try std.testing.expectEqual(@as(usize, 6), rows.len);
     try std.testing.expectEqualStrings("Project", rows[0].label);
     try std.testing.expectEqualStrings("Frontend", rows[1].label);
     try std.testing.expectEqualStrings("Backend", rows[2].label);
     try std.testing.expectEqualStrings("Universal", rows[3].label);
     try std.testing.expectEqualStrings("Human", rows[4].label);
+    try std.testing.expectEqualStrings("Enterprise", rows[5].label);
 }
 
 // ── 🎨 LIVERY ──────────────────────────────────────────────────────
@@ -1278,7 +1334,7 @@ test "WJTTC LIVERY - svg card is well-formed and carries every design element" {
     try std.testing.expect(!cap.truncated);
     try std.testing.expect(std.mem.startsWith(u8, out, "<svg"));
     try std.testing.expect(std.mem.endsWith(u8, body, "</svg>"));
-    try std.testing.expect(std.mem.indexOf(u8, out, "\xf0\x9f\x8f\x86") != null); // 🏆 glyph
+    try std.testing.expect(std.mem.indexOf(u8, out, "\xe2\x9c\xaa") != null); // ✪ proof seal glyph
     try std.testing.expect(std.mem.indexOf(u8, out, "url(#bg)") != null); // dark gradient
     try std.testing.expect(std.mem.indexOf(u8, out, "filter=\"url(#glow)\"") != null); // glow
     try std.testing.expect(std.mem.indexOf(u8, out, "100%") != null); // score

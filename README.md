@@ -55,7 +55,7 @@ cd bun-sticky-zig
 
 Bun is built on Zig ⚡️ — so we did that too. Also available as a [TypeScript package on npm](https://npmjs.com/package/bun-sticky) — 2,100+ downloads.
 
-> **The `faf` command.** bun-sticky installs as **`faf`** — the same command as the full [faf-cli](https://npmjs.com/package/faf-cli), and both score `.faf` files identically. If you have *both* installed, your PATH decides which runs (Homebrew will note that it's shadowed) — `faf score` works either way. bun-sticky is the **lite, zero-dependency, native** scorer; for the full toolchain (`taf`, `auto`, `go`, sync, …) use faf-cli. Same family, same `.faf`, same scores.
+> **The `faf` command.** bun-sticky installs as **`faf`** — the same command as the full [faf-cli](https://npmjs.com/package/faf-cli). If you have *both* installed, your PATH decides which runs (Homebrew will note that it's shadowed). bun-sticky is the **lite, zero-dependency, native** scorer — a Zig-native *approximation* of faf-cli's live scoring kernel, not a byte-identical reimplementation. It shares the same 21-base/12-enterprise Mk4 slot list, but the real kernel's exact applicability rules are private and may differ; for the authoritative score, run `faf-cli score`. For the full toolchain (`taf`, `auto`, `go`, sync, …) use faf-cli.
 
 ## Usage
 
@@ -136,7 +136,7 @@ The card carries a real stat line — `slots · tier · langs` — so the more o
 
 ## Scoring
 
-**Wolfejam Slot-Based Scoring** - 21 slots across 5 categories:
+**Wolfejam Slot-Based Scoring** — 21 base slots across 5 categories, always applicable, plus 12 enterprise slots (33 Mk4 canonical total) when a monorepo/enterprise signal is present:
 
 | Category | Slots | Fields |
 |----------|-------|--------|
@@ -145,8 +145,9 @@ The card carries a real stat line — `slots · tier · langs` — so the more o
 | Backend | 5 | backend, api_type, runtime, database, connection |
 | Universal | 3 | hosting, build, cicd |
 | Human | 6 | who, what, why, where, when, how |
+| Enterprise | 12 | monorepo tooling, package manager, admin, cache, search, storage, versioning, shared configs, remote cache — only when a `monorepo:` block or `app_type: enterprise` is present |
 
-**Type-aware**: CLI uses 9 slots, Fullstack uses all 21.
+Every project type faces the same 21 base slots — a `cli`-type project isn't exempted from filling frontend/backend, it just fills them with `none`. This is a **Zig-native approximation** of faf-cli's live scoring kernel, not a byte-identical reimplementation — the real kernel's exact applicability rules are private. Run `faf-cli score` for the authoritative number.
 
 ```
 Score = Filled Slots / Applicable Slots × 100
@@ -156,20 +157,21 @@ Score = Filled Slots / Applicable Slots × 100
 
 | Score | Tier | |
 |-------|------|---|
-| 100% | Trophy | 🏆 |
+| 100% | Trophy | ✪ |
 | 99%+ | Gold | ★ |
 | 95%+ | Silver | ◆ |
 | 85%+ | Bronze | ◇ Production ready |
 | 70%+ | Green | ● |
 | 55%+ | Yellow | ● |
-| <55% | Red | ○ |
+| 1%+ | Red | ○ |
+| 0% | White | ♡ |
 
-**🥐 Big Croissant** — the Michelin Star for repos: an *honor*, not a score. Awarded by AI/human for excellence at the top of the ladder. Can't be calculated; 100% is the max score.
+✪ is the work-surface proof seal for 100% (CLI, code, docs); 🏆 is reserved for social surfaces. **Big Orange 🍊** is the honor above Trophy — multi-criteria, AI/human-awarded, never calculated from a single score, never "above 100%."
 
 ## Testing
 
 ```bash
-zig build test --summary all    # 150/150 tests passed
+zig build test --summary all    # 157/157 tests passed
 ```
 
 Certified by the **[WJTTC suite](tests/WJTTC-TEST-SUITE.md)** — F1-tiered: ENGINE (core logic), LIVERY (card rendering), BRAKE (safety/escaping), AERO (14k-iteration fuzz + determinism).
