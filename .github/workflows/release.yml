@@ -21,7 +21,10 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-linux
             artifact: faf-linux-x64
-          - os: macos-latest
+          # Pinned macos-15 (not macos-latest) — see ci.yml comment:
+          # Xcode 26.4 on macos-latest breaks Zig 0.15.2's Darwin linker
+          # (ziglang/zig#31658). macos-15's default Xcode (16.4) is unaffected.
+          - os: macos-15
             target: x86_64-macos
             artifact: faf-macos-x64
           - os: macos-14
