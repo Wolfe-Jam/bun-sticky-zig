@@ -1,20 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="340" height="282" viewBox="0 0 340 282" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="372" viewBox="0 0 340 372" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
 <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#161b22"/><stop offset="1" stop-color="#0b0e14"/></linearGradient><filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-<rect x="1.5" y="1.5" width="337" height="279" rx="16" fill="url(#bg)" stroke="#FFCB45" stroke-width="3"/>
+<rect x="1.5" y="1.5" width="337" height="369" rx="16" fill="url(#bg)" stroke="#FFCB45" stroke-width="3"/>
 <text x="22" y="46" font-size="22" font-weight="700" fill="#f0f6fc">bun-sticky-zig</text>
 <text x="22" y="68" font-size="13" fill="#8b949e">cli · Zig</text>
-<text x="318" y="56" text-anchor="end" font-size="30" fill="#FFCB45">🏆</text>
+<text x="318" y="56" text-anchor="end" font-size="30" fill="#FFCB45">✪</text>
 <text x="22" y="104" font-size="11" letter-spacing="1.5" fill="#8b949e">FAF SCORE</text>
 <text x="22" y="150" font-size="44" font-weight="800" fill="#FFCB45" filter="url(#glow)">100%</text>
 <text x="318" y="150" text-anchor="end" font-size="20" font-weight="700" fill="#f0f6fc">Trophy</text>
-<text x="22" y="170" font-size="12" fill="#8b949e">9 / 9 slots</text>
+<text x="22" y="170" font-size="12" fill="#8b949e">21 / 21 slots</text>
 <text x="22" y="199" font-size="11" fill="#8b949e">Project</text>
 <rect x="100" y="192" width="150" height="8" rx="4" fill="#21262d"/>
 <rect x="100" y="192" width="150" height="8" rx="4" fill="#3FB950"/>
 <text x="262" y="199" font-size="11" fill="#c9d1d9">100%</text>
-<text x="22" y="223" font-size="11" fill="#8b949e">Human</text>
+<text x="22" y="223" font-size="11" fill="#8b949e">Frontend</text>
 <rect x="100" y="216" width="150" height="8" rx="4" fill="#21262d"/>
 <rect x="100" y="216" width="150" height="8" rx="4" fill="#3FB950"/>
 <text x="262" y="223" font-size="11" fill="#c9d1d9">100%</text>
-<text x="22" y="252" font-size="11" fill="#8b949e">Missing: <tspan fill="#c9d1d9">none</tspan></text>
+<text x="22" y="247" font-size="11" fill="#8b949e">Backend</text>
+<rect x="100" y="240" width="150" height="8" rx="4" fill="#21262d"/>
+<rect x="100" y="240" width="150" height="8" rx="4" fill="#3FB950"/>
+<text x="262" y="247" font-size="11" fill="#c9d1d9">100%</text>
+<text x="22" y="271" font-size="11" fill="#8b949e">Universal</text>
+<rect x="100" y="264" width="150" height="8" rx="4" fill="#21262d"/>
+<rect x="100" y="264" width="150" height="8" rx="4" fill="#3FB950"/>
+<text x="262" y="271" font-size="11" fill="#c9d1d9">100%</text>
+<text x="22" y="295" font-size="11" fill="#8b949e">Human</text>
+<rect x="100" y="288" width="150" height="8" rx="4" fill="#21262d"/>
+<rect x="100" y="288" width="150" height="8" rx="4" fill="#3FB950"/>
+<text x="262" y="295" font-size="11" fill="#c9d1d9">100%</text>
+<text x="22" y="324" font-size="11" fill="#8b949e">Missing: <tspan fill="#c9d1d9">none</tspan></text>
+<text x="22" y="342" font-size="9" fill="#586069" font-style="italic">Zig-native approximation, not authoritative</text>
 </svg>

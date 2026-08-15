@@ -1,22 +1,49 @@
 ///! Wolfejam Slot-Based Scoring System
 ///! Score = (Filled Slots / Applicable Slots) x 100
 ///!
-///! 21 total slots across 5 categories.
-///! Type-aware scoring - CLI uses 9 slots, Fullstack uses 21.
+///! This is a Zig-native APPROXIMATION of the live faf-cli scoring kernel,
+///! not the authoritative implementation. faf-cli's real scorer delegates to
+///! a private compiled kernel (see faf-cli/src/core/scorer.ts — `kernel.score()`,
+///! WASM); there is no public spec file to diff this against, only faf-cli's
+///! own observed output. Run `faf-cli score` for the authoritative number.
+///!
+///! Slot list mirrors faf-cli's public/OSS `src/core/slots.ts` (33 canonical
+///! Mk4 slots, checked 2026-08-14) — that file ships in faf-cli and is not
+///! the private kernel, so mirroring it is not a moat leak. The kernel's
+///! exact per-project-type applicability rules ARE private and not visible
+///! from outside; the 21-base/12-enterprise split below is a best-effort
+///! rule inferred from one verified live data point (faf-cli scored a
+///! `type: cli` project.faf as 21 active slots, not 9 — see git history),
+///! not a guaranteed match to every project type.
 ///!
 ///! NOT Elon weights. Wolfejam slots.
 
 const std = @import("std");
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SLOT DEFINITIONS - 21 Slots Total
+// SLOT DEFINITIONS — 33 Mk4 canonical slots
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 21 "base" slots (project + human + frontend + backend + universal) are
+// applicable to every project — this matches the one live faf-cli data
+// point we have (a `cli`-type project.faf scored 21 active slots).
+// 12 "enterprise" slots are applicable only when the file shows a
+// monorepo/enterprise signal (see isEnterpriseApplicable below).
 
 /// Project slots (3)
 pub const PROJECT_SLOTS = [_][]const u8{
     "project.name",
     "project.goal",
     "project.main_language",
+};
+
+/// Human context slots (6)
+pub const HUMAN_SLOTS = [_][]const u8{
+    "human_context.who",
+    "human_context.what",
+    "human_context.why",
+    "human_context.where",
+    "human_context.when",
+    "human_context.how",
 };
 
 /// Frontend slots (4)
@@ -43,68 +70,37 @@ pub const UNIVERSAL_SLOTS = [_][]const u8{
     "stack.cicd",
 };
 
-/// Human context slots (6)
-pub const HUMAN_SLOTS = [_][]const u8{
-    "human_context.who",
-    "human_context.what",
-    "human_context.why",
-    "human_context.where",
-    "human_context.when",
-    "human_context.how",
+/// Enterprise slots (12) — Mk4 addition on top of the original 21.
+/// Merges faf-cli's three enterprise_infra/enterprise_app/enterprise_ops
+/// categories into one display section; a simplification made for this
+/// Zig port, not a faf-cli distinction.
+pub const ENTERPRISE_SLOTS = [_][]const u8{
+    "stack.monorepo_tool",
+    "stack.package_manager",
+    "stack.workspaces",
+    "monorepo.packages_count",
+    "monorepo.build_orchestrator",
+    "stack.admin",
+    "stack.cache",
+    "stack.search",
+    "stack.storage",
+    "monorepo.versioning_strategy",
+    "monorepo.shared_configs",
+    "monorepo.remote_cache",
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// PROJECT TYPES
+// PROJECT TYPES — informational/display only, no longer gates applicability.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 pub const ProjectType = enum {
-    cli, // 9 slots: project + human
-    library, // 9 slots: project + human
-    api, // 17 slots: project + backend + universal + human
-    webapp, // 16 slots: project + frontend + universal + human
-    fullstack, // 21 slots: all
-    mobile, // 9 slots: project + human
-    unknown, // 9 slots: project + human (safe default)
-
-    pub fn applicableSlotCount(self: ProjectType) u8 {
-        return switch (self) {
-            .cli, .library, .mobile, .unknown => 9, // project(3) + human(6)
-            .webapp => 16, // project(3) + frontend(4) + universal(3) + human(6)
-            .api => 17, // project(3) + backend(5) + universal(3) + human(6)
-            .fullstack => 21, // all
-        };
-    }
-
-    pub fn hasProject(self: ProjectType) bool {
-        _ = self;
-        return true; // All types have project
-    }
-
-    pub fn hasFrontend(self: ProjectType) bool {
-        return switch (self) {
-            .webapp, .fullstack => true,
-            else => false,
-        };
-    }
-
-    pub fn hasBackend(self: ProjectType) bool {
-        return switch (self) {
-            .api, .fullstack => true,
-            else => false,
-        };
-    }
-
-    pub fn hasUniversal(self: ProjectType) bool {
-        return switch (self) {
-            .api, .webapp, .fullstack => true,
-            else => false,
-        };
-    }
-
-    pub fn hasHuman(self: ProjectType) bool {
-        _ = self;
-        return true; // All types have human context
-    }
+    cli,
+    library,
+    api,
+    webapp,
+    fullstack,
+    mobile,
+    unknown,
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -128,6 +124,7 @@ pub const ScoreResult = struct {
     backend: SectionResult,
     universal: SectionResult,
     human: SectionResult,
+    enterprise: SectionResult,
     filled: u8,
     total: u8,
     score: u8,
@@ -140,6 +137,7 @@ pub const ScoreResult = struct {
             .backend = .{ .filled = 0, .total = 0, .percentage = 0 },
             .universal = .{ .filled = 0, .total = 0, .percentage = 0 },
             .human = .{ .filled = 0, .total = 0, .percentage = 0 },
+            .enterprise = .{ .filled = 0, .total = 0, .percentage = 0 },
             .filled = 0,
             .total = 0,
             .score = 0,
@@ -151,9 +149,8 @@ pub const ScoreResult = struct {
 // SCORING FUNCTIONS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/// Detect project type from content
+/// Detect project type from content — informational label only.
 pub fn detectProjectType(content: []const u8) ProjectType {
-    // Look for explicit type field
     if (std.mem.indexOf(u8, content, "type: cli") != null or
         std.mem.indexOf(u8, content, "type: CLI") != null)
     {
@@ -183,7 +180,6 @@ pub fn detectProjectType(content: []const u8) ProjectType {
         return .mobile;
     }
 
-    // Infer from stack
     const has_frontend = std.mem.indexOf(u8, content, "frontend:") != null;
     const has_backend = std.mem.indexOf(u8, content, "backend:") != null or
         std.mem.indexOf(u8, content, "database:") != null;
@@ -193,6 +189,14 @@ pub fn detectProjectType(content: []const u8) ProjectType {
     if (has_backend) return .api;
 
     return .unknown;
+}
+
+/// Best-effort heuristic: are the 12 enterprise slots applicable?
+/// True when the file shows a monorepo/enterprise signal. Approximation —
+/// the real kernel's rule is private and may differ.
+pub fn isEnterpriseApplicable(content: []const u8) bool {
+    return std.mem.indexOf(u8, content, "monorepo:") != null or
+        std.mem.indexOf(u8, content, "app_type: enterprise") != null;
 }
 
 /// Check if a slot has a value in the content
@@ -243,29 +247,30 @@ pub fn countSection(content: []const u8, slots: []const []const u8, applies: boo
     return .{ .filled = filled, .total = total, .percentage = percentage };
 }
 
-/// Calculate FAF score using Wolfejam slot-based system
-/// Score = (Filled Slots / Applicable Slots) x 100
+/// Calculate FAF score using Wolfejam slot-based system.
+/// Base 21 slots (project/human/frontend/backend/universal) always apply;
+/// 12 enterprise slots apply only when isEnterpriseApplicable() is true.
 pub fn calculateScore(content: []const u8) ScoreResult {
     var result = ScoreResult.init();
 
-    // Detect project type
     result.project_type = detectProjectType(content);
+    const enterprise_applies = isEnterpriseApplicable(content);
 
-    // Count each section
-    result.project = countSection(content, &PROJECT_SLOTS, result.project_type.hasProject());
-    result.frontend = countSection(content, &FRONTEND_SLOTS, result.project_type.hasFrontend());
-    result.backend = countSection(content, &BACKEND_SLOTS, result.project_type.hasBackend());
-    result.universal = countSection(content, &UNIVERSAL_SLOTS, result.project_type.hasUniversal());
-    result.human = countSection(content, &HUMAN_SLOTS, result.project_type.hasHuman());
+    result.project = countSection(content, &PROJECT_SLOTS, true);
+    result.frontend = countSection(content, &FRONTEND_SLOTS, true);
+    result.backend = countSection(content, &BACKEND_SLOTS, true);
+    result.universal = countSection(content, &UNIVERSAL_SLOTS, true);
+    result.human = countSection(content, &HUMAN_SLOTS, true);
+    result.enterprise = countSection(content, &ENTERPRISE_SLOTS, enterprise_applies);
 
-    // Sum totals
     result.filled = result.project.filled + result.frontend.filled +
-        result.backend.filled + result.universal.filled + result.human.filled;
+        result.backend.filled + result.universal.filled + result.human.filled +
+        result.enterprise.filled;
 
     result.total = result.project.total + result.frontend.total +
-        result.backend.total + result.universal.total + result.human.total;
+        result.backend.total + result.universal.total + result.human.total +
+        result.enterprise.total;
 
-    // Calculate final score (use u16 to avoid overflow)
     result.score = if (result.total > 0) @intCast((@as(u16, result.filled) * 100) / @as(u16, result.total)) else 0;
 
     return result;
@@ -275,21 +280,14 @@ pub fn calculateScore(content: []const u8) ScoreResult {
 // TESTS - WJTTC Championship Grade
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test "slot counts are correct" {
+test "slot counts are correct — 21 base + 12 enterprise = 33 Mk4 canonical" {
     try std.testing.expectEqual(@as(usize, 3), PROJECT_SLOTS.len);
     try std.testing.expectEqual(@as(usize, 4), FRONTEND_SLOTS.len);
     try std.testing.expectEqual(@as(usize, 5), BACKEND_SLOTS.len);
     try std.testing.expectEqual(@as(usize, 3), UNIVERSAL_SLOTS.len);
     try std.testing.expectEqual(@as(usize, 6), HUMAN_SLOTS.len);
-    // Total: 3 + 4 + 5 + 3 + 6 = 21
-}
-
-test "project type slot counts" {
-    try std.testing.expectEqual(@as(u8, 9), ProjectType.cli.applicableSlotCount());
-    try std.testing.expectEqual(@as(u8, 9), ProjectType.library.applicableSlotCount());
-    try std.testing.expectEqual(@as(u8, 17), ProjectType.api.applicableSlotCount());
-    try std.testing.expectEqual(@as(u8, 16), ProjectType.webapp.applicableSlotCount());
-    try std.testing.expectEqual(@as(u8, 21), ProjectType.fullstack.applicableSlotCount());
+    try std.testing.expectEqual(@as(usize, 12), ENTERPRISE_SLOTS.len);
+    // 3 + 4 + 5 + 3 + 6 + 12 = 33
 }
 
 test "detect CLI project type" {
@@ -311,7 +309,31 @@ test "has slot value" {
     try std.testing.expect(!hasSlotValue(content, "project.main_language"));
 }
 
-test "calculate CLI score" {
+test "enterprise slots are NOT applicable without a monorepo/enterprise signal" {
+    const content = "project:\n  name: SmallCLI\n  type: cli\n";
+    try std.testing.expect(!isEnterpriseApplicable(content));
+    const result = calculateScore(content);
+    try std.testing.expectEqual(@as(u8, 0), result.enterprise.total);
+}
+
+test "enterprise slots ARE applicable with a monorepo block" {
+    const content = "project:\n  name: BigRepo\nmonorepo:\n  packages_count: 12\n";
+    try std.testing.expect(isEnterpriseApplicable(content));
+    const result = calculateScore(content);
+    try std.testing.expectEqual(@as(u8, 12), result.enterprise.total);
+}
+
+test "a CLI-type project is held to the same 21 base slots as everything else" {
+    // This is the headline fix: the old model gave CLI-type projects only
+    // 9 applicable slots (project+human). The live faf-cli kernel does not
+    // do that — verified 2026-08-14 by running faf-cli against a `type:
+    // cli` project.faf and observing 21 active slots, not 9.
+    const content = "project:\n  name: X\n  type: cli\n";
+    const result = calculateScore(content);
+    try std.testing.expectEqual(@as(u8, 21), result.total); // no enterprise signal → 21, not 9
+}
+
+test "calculate full score — all 21 base slots filled, no enterprise signal" {
     const content =
         \\project:
         \\  name: TestCLI
@@ -325,14 +347,27 @@ test "calculate CLI score" {
         \\  where: Terminal
         \\  when: Now
         \\  how: zig build run
+        \\stack:
+        \\  frontend: none
+        \\  css_framework: none
+        \\  ui_library: none
+        \\  state_management: none
+        \\  backend: none
+        \\  api_type: none
+        \\  runtime: Zig
+        \\  database: none
+        \\  connection: none
+        \\  hosting: GitHub
+        \\  build: zig build
+        \\  cicd: GitHub Actions
     ;
 
     const result = calculateScore(content);
 
     try std.testing.expectEqual(ProjectType.cli, result.project_type);
-    try std.testing.expectEqual(@as(u8, 9), result.total); // CLI = 9 slots
-    try std.testing.expectEqual(@as(u8, 9), result.filled); // All filled
-    try std.testing.expectEqual(@as(u8, 100), result.score); // 100%
+    try std.testing.expectEqual(@as(u8, 21), result.total); // base slots only, no enterprise signal
+    try std.testing.expectEqual(@as(u8, 21), result.filled);
+    try std.testing.expectEqual(@as(u8, 100), result.score);
 }
 
 test "partial score calculation" {
@@ -347,7 +382,7 @@ test "partial score calculation" {
     const result = calculateScore(content);
 
     try std.testing.expectEqual(ProjectType.cli, result.project_type);
-    try std.testing.expectEqual(@as(u8, 9), result.total);
+    try std.testing.expectEqual(@as(u8, 21), result.total);
     try std.testing.expectEqual(@as(u8, 2), result.filled); // name + who
-    try std.testing.expectEqual(@as(u8, 22), result.score); // 2/9 = 22%
+    try std.testing.expectEqual(@as(u8, 9), result.score); // 2/21 ≈ 9%
 }

@@ -14,7 +14,16 @@ project:
   license: MIT
 
 stack:
+  frontend: none
+  css_framework: none
+  ui_library: none
+  state_management: none
+  backend: none
+  api_type: none
   runtime: Zig
+  database: none
+  connection: none
+  hosting: GitHub
   build: zig build
   cicd: GitHub Actions
 
@@ -40,13 +49,15 @@ architecture:
 
 scoring:
   system: Wolfejam slot-based
-  total_slots: 21
+  total_slots: 21 base + 12 enterprise (33 Mk4 canonical)
   categories:
     - project: 3 slots
     - frontend: 4 slots
     - backend: 5 slots
     - universal: 3 slots
     - human: 6 slots
+    - enterprise: 12 slots (only when a monorepo signal is present)
   formula: (Filled / Applicable) x 100
+  note: Zig-native approximation of faf-cli's live scorer, not authoritative
 
 dedication: For Bun. For Claude. For speed.

@@ -2,10 +2,10 @@
 ///! Comprehensive testing for bun-sticky
 ///!
 ///! Test categories:
-///! - Slot definitions (21 slots)
-///! - Type detection (7 types)
+///! - Slot definitions (21 base + 12 enterprise = 33 Mk4 canonical slots)
+///! - Type detection (7 types, informational/display only)
 ///! - Score calculations
-///! - Tier boundaries (7 tiers)
+///! - Tier boundaries (8 tiers)
 ///! - Edge cases
 ///! - Integration tests
 
@@ -37,13 +37,15 @@ test "slot counts - human has 6 slots" {
     try std.testing.expectEqual(@as(usize, 6), scorer.HUMAN_SLOTS.len);
 }
 
-test "slot counts - total is 21" {
-    const total = scorer.PROJECT_SLOTS.len +
+test "slot counts - base is 21, +12 enterprise = 33 Mk4 canonical" {
+    const base = scorer.PROJECT_SLOTS.len +
         scorer.FRONTEND_SLOTS.len +
         scorer.BACKEND_SLOTS.len +
         scorer.UNIVERSAL_SLOTS.len +
         scorer.HUMAN_SLOTS.len;
-    try std.testing.expectEqual(@as(usize, 21), total);
+    try std.testing.expectEqual(@as(usize, 21), base);
+    try std.testing.expectEqual(@as(usize, 12), scorer.ENTERPRISE_SLOTS.len);
+    try std.testing.expectEqual(@as(usize, 33), base + scorer.ENTERPRISE_SLOTS.len);
 }
 
 test "project slots contain required fields" {
@@ -63,68 +65,30 @@ test "human slots contain 5W1H" {
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PROJECT TYPE TESTS
+//
+// ProjectType is informational/display only as of the Mk4 resync — it no
+// longer gates slot applicability. A verified live faf-cli data point
+// (2026-08-14) showed a `type: cli` project.faf scored against 21 active
+// slots, not the 9 the old per-type table claimed. Applicability is now
+// binary: 21 base slots always apply, 12 enterprise slots apply only when
+// isEnterpriseApplicable() detects a monorepo/enterprise signal — see
+// scorer.zig's own tests for that behavior.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test "type slot counts - cli = 9" {
-    try std.testing.expectEqual(@as(u8, 9), scorer.ProjectType.cli.applicableSlotCount());
+test "type detection still labels cli correctly (display only, no longer scored)" {
+    const content = "project:\n  type: cli\n";
+    try std.testing.expectEqual(scorer.ProjectType.cli, scorer.detectProjectType(content));
 }
 
-test "type slot counts - library = 9" {
-    try std.testing.expectEqual(@as(u8, 9), scorer.ProjectType.library.applicableSlotCount());
+test "type detection still labels fullstack correctly (display only)" {
+    const content = "project:\n  type: full\n";
+    try std.testing.expectEqual(scorer.ProjectType.fullstack, scorer.detectProjectType(content));
 }
 
-test "type slot counts - api = 17" {
-    try std.testing.expectEqual(@as(u8, 17), scorer.ProjectType.api.applicableSlotCount());
-}
-
-test "type slot counts - webapp = 16" {
-    try std.testing.expectEqual(@as(u8, 16), scorer.ProjectType.webapp.applicableSlotCount());
-}
-
-test "type slot counts - fullstack = 21" {
-    try std.testing.expectEqual(@as(u8, 21), scorer.ProjectType.fullstack.applicableSlotCount());
-}
-
-test "type slot counts - mobile = 9" {
-    try std.testing.expectEqual(@as(u8, 9), scorer.ProjectType.mobile.applicableSlotCount());
-}
-
-test "type slot counts - unknown = 9" {
-    try std.testing.expectEqual(@as(u8, 9), scorer.ProjectType.unknown.applicableSlotCount());
-}
-
-test "type categories - cli has project" {
-    try std.testing.expect(scorer.ProjectType.cli.hasProject());
-}
-
-test "type categories - cli has human" {
-    try std.testing.expect(scorer.ProjectType.cli.hasHuman());
-}
-
-test "type categories - cli no frontend" {
-    try std.testing.expect(!scorer.ProjectType.cli.hasFrontend());
-}
-
-test "type categories - cli no backend" {
-    try std.testing.expect(!scorer.ProjectType.cli.hasBackend());
-}
-
-test "type categories - fullstack has all" {
-    try std.testing.expect(scorer.ProjectType.fullstack.hasProject());
-    try std.testing.expect(scorer.ProjectType.fullstack.hasFrontend());
-    try std.testing.expect(scorer.ProjectType.fullstack.hasBackend());
-    try std.testing.expect(scorer.ProjectType.fullstack.hasUniversal());
-    try std.testing.expect(scorer.ProjectType.fullstack.hasHuman());
-}
-
-test "type categories - webapp has frontend no backend" {
-    try std.testing.expect(scorer.ProjectType.webapp.hasFrontend());
-    try std.testing.expect(!scorer.ProjectType.webapp.hasBackend());
-}
-
-test "type categories - api has backend no frontend" {
-    try std.testing.expect(scorer.ProjectType.api.hasBackend());
-    try std.testing.expect(!scorer.ProjectType.api.hasFrontend());
+test "a cli-type and a fullstack-type project face the same 21 base slots" {
+    const cli_content = "project:\n  name: A\n  type: cli\n";
+    const full_content = "project:\n  name: B\n  type: full\n";
+    try std.testing.expectEqual(scorer.calculateScore(cli_content).total, scorer.calculateScore(full_content).total);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -255,7 +219,11 @@ test "hasSlotValue - finds stack values" {
 // SCORE CALCULATION TESTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test "score - CLI 100% (9/9 slots)" {
+test "score - CLI needs all 21 base slots for 100%, not just project+human" {
+    // Old Mk3 model gave CLI-type projects only 9 applicable slots
+    // (project+human). Verified live against faf-cli 2026-08-14: a
+    // `type: cli` project.faf is scored against 21 active slots. A CLI
+    // project that only fills project+human now lands well under 100%.
     const content =
         \\project:
         \\  name: TestCLI
@@ -272,12 +240,12 @@ test "score - CLI 100% (9/9 slots)" {
     ;
     const result = scorer.calculateScore(content);
     try std.testing.expectEqual(scorer.ProjectType.cli, result.project_type);
-    try std.testing.expectEqual(@as(u8, 9), result.total);
-    try std.testing.expectEqual(@as(u8, 9), result.filled);
-    try std.testing.expectEqual(@as(u8, 100), result.score);
+    try std.testing.expectEqual(@as(u8, 21), result.total);
+    try std.testing.expectEqual(@as(u8, 9), result.filled); // project(3) + human(6)
+    try std.testing.expectEqual(@as(u8, 42), result.score); // 9/21 ≈ 42%
 }
 
-test "score - CLI partial (3/9 = 33%)" {
+test "score - CLI partial (3/21)" {
     const content =
         \\project:
         \\  name: Partial
@@ -288,12 +256,12 @@ test "score - CLI partial (3/9 = 33%)" {
     ;
     const result = scorer.calculateScore(content);
     try std.testing.expectEqual(scorer.ProjectType.cli, result.project_type);
-    try std.testing.expectEqual(@as(u8, 9), result.total);
+    try std.testing.expectEqual(@as(u8, 21), result.total);
     try std.testing.expectEqual(@as(u8, 3), result.filled);
-    try std.testing.expectEqual(@as(u8, 33), result.score);
+    try std.testing.expectEqual(@as(u8, 14), result.score); // 3/21 ≈ 14%
 }
 
-test "score - fullstack 100% (21/21 slots)" {
+test "score - fullstack 100% (21/21 base slots, no enterprise signal)" {
     const content =
         \\project:
         \\  name: FullApp
@@ -328,18 +296,24 @@ test "score - fullstack 100% (21/21 slots)" {
     try std.testing.expectEqual(@as(u8, 100), result.score);
 }
 
-test "score - webapp 16 slots" {
+test "score - webapp faces the same 21 base slots (type no longer gates applicability)" {
     const content = "project:\n  type: webapp\n";
     const result = scorer.calculateScore(content);
     try std.testing.expectEqual(scorer.ProjectType.webapp, result.project_type);
-    try std.testing.expectEqual(@as(u8, 16), result.total);
+    try std.testing.expectEqual(@as(u8, 21), result.total);
 }
 
-test "score - api 17 slots" {
+test "score - api faces the same 21 base slots (type no longer gates applicability)" {
     const content = "project:\n  type: api\n";
     const result = scorer.calculateScore(content);
     try std.testing.expectEqual(scorer.ProjectType.api, result.project_type);
-    try std.testing.expectEqual(@as(u8, 17), result.total);
+    try std.testing.expectEqual(@as(u8, 21), result.total);
+}
+
+test "score - enterprise 12 slots only count with a monorepo signal (33 total)" {
+    const content = "project:\n  name: Big\n  type: fullstack\nmonorepo:\n  packages_count: 5\n";
+    const result = scorer.calculateScore(content);
+    try std.testing.expectEqual(@as(u8, 33), result.total);
 }
 
 test "score - section breakdown correct" {
@@ -425,9 +399,10 @@ test "tier - 54 is Red" {
     try std.testing.expectEqualStrings("Red", t.name);
 }
 
-test "tier - 0 is Red" {
+test "tier - 0 is White, not Red" {
+    // 8-tier ladder: Red is 1-54, White is exactly 0 (empty .faf).
     const t = tier.getTier(0);
-    try std.testing.expectEqualStrings("Red", t.name);
+    try std.testing.expectEqualStrings("White", t.name);
 }
 
 test "tier - 1 is Red" {
@@ -558,28 +533,30 @@ test "wolfejam formula - score equals filled/total * 100" {
         \\  who: Devs
     ;
     const result = scorer.calculateScore(content);
-    // 4 filled / 9 total = 44%
+    // 4 filled / 21 total ≈ 19%
     try std.testing.expectEqual(@as(u8, 4), result.filled);
-    try std.testing.expectEqual(@as(u8, 9), result.total);
-    try std.testing.expectEqual(@as(u8, 44), result.score);
+    try std.testing.expectEqual(@as(u8, 21), result.total);
+    try std.testing.expectEqual(@as(u8, 19), result.score);
 }
 
-test "wolfejam formula - type-aware slot count" {
-    // CLI should only count project (3) + human (6) = 9 slots
+test "wolfejam formula - type no longer gates the base slot count" {
+    // Both cli and fullstack face the same 21 base slots now — verified
+    // against live faf-cli 2026-08-14. Only the 12 enterprise slots are
+    // conditional (on a monorepo/enterprise signal, not on type).
     const cli_content = "project:\n  type: cli\n";
     const cli_result = scorer.calculateScore(cli_content);
-    try std.testing.expectEqual(@as(u8, 9), cli_result.total);
+    try std.testing.expectEqual(@as(u8, 21), cli_result.total);
 
-    // Fullstack should count all 21 slots
     const full_content = "project:\n  type: fullstack\n";
     const full_result = scorer.calculateScore(full_content);
     try std.testing.expectEqual(@as(u8, 21), full_result.total);
 }
 
-test "wolfejam formula - non-applicable sections have 0 total" {
+test "wolfejam formula - only enterprise is conditionally non-applicable" {
     const content = "project:\n  type: cli\n";
     const result = scorer.calculateScore(content);
-    try std.testing.expectEqual(@as(u8, 0), result.frontend.total);
-    try std.testing.expectEqual(@as(u8, 0), result.backend.total);
-    try std.testing.expectEqual(@as(u8, 0), result.universal.total);
+    try std.testing.expectEqual(@as(u8, 4), result.frontend.total);
+    try std.testing.expectEqual(@as(u8, 5), result.backend.total);
+    try std.testing.expectEqual(@as(u8, 3), result.universal.total);
+    try std.testing.expectEqual(@as(u8, 0), result.enterprise.total); // no monorepo signal
 }

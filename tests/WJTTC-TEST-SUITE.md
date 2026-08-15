@@ -4,17 +4,17 @@
 Zig-native FAF CLI. Zero dependencies, runs on the metal.
 
 ```bash
-zig build test --summary all     # 150/150 tests passed
+zig build test --summary all     # 157/157 tests passed
 ```
 
 ## Layout
 
 | Artifact | Tests | Covers |
 |----------|------:|--------|
-| `src/tests.zig` | 99 | Scoring formula, slot definitions, type detection, tier boundaries, edge cases |
-| `src/main.zig` | 34 | Render/CLI layer + WJTTC race tiers (below) |
-| `src/scorer.zig` | 10 | In-module scorer unit tests |
-| `src/tier.zig` | 7 | In-module tier unit tests |
+| `src/tests.zig` | 93 | Scoring formula, slot definitions, type detection, tier boundaries, edge cases |
+| `src/main.zig` | 43 | Render/CLI layer + WJTTC race tiers (below) |
+| `src/scorer.zig` | 9 | In-module scorer unit tests |
+| `src/tier.zig` | 12 | In-module tier unit tests — single source of truth for the ladder |
 
 ## The race tiers (`src/main.zig`)
 
@@ -23,14 +23,14 @@ certified across four F1-inspired tiers:
 
 ### 🏎️ ENGINE — core decision logic
 Pure, deterministic functions, tested at every boundary:
-- `tierColor(score)` — dark-moody tier color (gold/green/amber/red) at 100/85/55 cutoffs
-- `tierGlyph(score)` — the tier ladder; **🏆 is the only emoji and appears only at a perfect 100**, sub-Trophy uses geometric symbols (★ ◆ ◇ ● ○)
+- `tier.getTierHex(score)` / `tier.getTierEmoji(score)` (from `tier.zig` — the
+  only tier implementation; main.zig used to carry a second, disagreeing copy)
 - `barColor(pct)` — section bar fill at 85/55 cutoffs
-- `sectionRows()` — the 5 canonical sections, always in order
+- `sectionRows()` — the 6 canonical sections (5 base + Enterprise), always in order
 
 ### 🎨 LIVERY — card output is well-formed and complete
 Renderers are captured into a buffer and asserted:
-- SVG card opens `<svg`, closes `</svg>`, and carries every design element (🏆 glyph, dark gradient `url(#bg)`, glow filter, score, tier name, project name)
+- SVG card opens `<svg`, closes `</svg>`, and carries every design element (✪ proof-seal glyph, dark gradient `url(#bg)`, glow filter, score, tier name, project name)
 - **Tier label is right-aligned** (`text-anchor="end"`) — the regression lock for the v1.3.1 collision fix; the old hard-coded `x="128"` coordinate must never return
 - HTML and ASCII cards render non-empty and name-bearing
 - `grab` emits a JSON object carrying `_score` and `_tier`
