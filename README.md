@@ -11,6 +11,8 @@
   </pre>
 </p>
 
+⭐ [Star it on GitHub](https://github.com/Wolfe-Jam/bun-sticky-zig): bookmarks it for you, helps other devs find it too.
+
 <h1 align="center">bun-sticky</h1>
 
 <p align="center">
